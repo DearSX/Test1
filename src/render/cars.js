@@ -25,8 +25,17 @@ export const RIVAL_COLORS = ['#3d7bff','#7dff6a','#ffd23d','#b66bff','#3dfcff','
 // to your own.
 export function drawPlayer(ctx, canvas, car, input, garage = null) {
   const W = canvas.width, H = canvas.height;
-  const width = (TUNE.ROAD_WIDTH / TUNE.CAMERA_HEIGHT) * (W / 2) * TUNE.CAR_SCREEN_WIDTH;
-  const y = H - H * 0.055;
+
+  // Both the size AND the ground line come from the same projection the rivals
+  // use, evaluated at the camera's own distance to the car. A fixed fraction of
+  // the canvas was standing in here since M1, and it put the contact patch ~30px
+  // above where the road surface actually projects — the car was literally
+  // hovering, by about 9% of its own width.
+  const cameraDepth = 1 / Math.tan((TUNE.FOV / 2) * Math.PI / 180);
+  const playerZ = TUNE.CAMERA_HEIGHT * cameraDepth;
+  const scale = cameraDepth / playerZ;
+  const width = scale * TUNE.ROAD_WIDTH * (W / 2) * TUNE.CAR_SCREEN_WIDTH;
+  const y = H / 2 + scale * TUNE.CAMERA_HEIGHT * (H / 2);
   const lean = clamp(input.steer * 0.8 + car.lateralSlip * Math.sign(-car.x || 1) * 0.2, -1, 1) * 0.35;
 
   setSpriteContext(ctx, {
@@ -38,6 +47,11 @@ export function drawPlayer(ctx, canvas, car, input, garage = null) {
   ctx.save();
   ctx.translate(W / 2, y);
   ctx.rotate(lean);
+
+  // Ground shadow, from the original's drawPlayer. Dropping it is what made the
+  // car look like it was hovering — there was nothing anchoring it to the road.
+  ctx.fillStyle = 'rgba(10,60,40,.4)';
+  ctx.beginPath(); ctx.ellipse(0, width * .06, width * .55, width * .12, 0, 0, 7); ctx.fill();
 
   // The original drew nitro flames behind the car before the body.
   if (car.nitroTimer > 0) {
@@ -111,6 +125,9 @@ export function drawCars(ctx, canvas, renderer, track, cars, cameraZ) {
       setSpriteContext(ctx, { dpr: 1 });
       ctx.save();
       ctx.translate(screenX, y);
+      // Ground shadow, from the original's drawRival.
+      ctx.fillStyle = 'rgba(10,60,40,.35)';
+      ctx.beginPath(); ctx.ellipse(0, width * .06, width * .55, width * .12, 0, 0, 7); ctx.fill();
       drawRivalBody(width, c.paint ?? RIVAL_COLORS[0], c.dark ?? '#1b2a3a');
       ctx.restore();
       drawn++;
