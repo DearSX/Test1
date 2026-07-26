@@ -20,14 +20,19 @@ then open `http://localhost:3000` (serve) or `http://localhost:8000` (python).
 - **M1 — Physics: DONE.** Throttle, brake, six-speed box with tacho (auto or manual), continuous analog steering, centrifugal force, per-surface grip, off-road, crashes, nitro. Keyboard, touch and gamepad. `CENTRIFUGAL` tuned to **0.78**.
 - **M2 — Racing: DONE.** 19 rivals running the same physics on the same track, swept collisions with no pass-through, slipstream, honest positions, 3-lap races with lap timing and a results screen.
 - **M3 — Career: DONE.** 8-race seasons, championship points, prize money, 4 divisions with promotion, a 6-category upgrade shop wired into physics, standings, and 4 tracks. One tyre level is worth 0.85s a lap.
-- M4 — Strategy: next. Fuel, pit stops, damage, tyre compounds, nemesis.
+- **M4 — Strategy: DONE.** Fuel burned per distance (a tank does 2.5 of a 3-lap race), a working pit lane on the left of the start straight, tyre wear and compounds, repair bills, DNF on a dry tank, and a nemesis with a real pace boost.
+- M5 — Persistence: next. Save slots, autosave, JSON export/import.
 
 ### Controls
 
-**Driving:** `↑` throttle · `↓` brake · `←` `→` steer · `Shift` nitro · `M` toggle manual gears (`Q`/`E` to shift).
+**Driving:** `↑` throttle · `↓` brake · `←` `→` steer · `Shift` nitro · `M` toggle manual gears (`Q`/`E` to shift) · `P` book repairs at your next pit stop.
+
+**Pitting:** the pit lane is the left verge of the start/finish straight. When fuel is low the HUD warns you before the entry — steer left across the road edge, slow to the limit, and you'll be held for about 4 seconds while the car is refuelled and re-shod (longer if you booked repairs).
 On a phone: drag the left half of the screen to steer, hold the lower right for throttle, below that for brake, upper right for nitro.
 
 **Garage:** `↑` `↓` select · `Enter` buy · `S` standings · `R` go racing.
+
+`window.velocity3000` exposes the live game state in the browser console — handy for looking at a situation without driving to it.
 
 ## Tuning
 
@@ -44,6 +49,7 @@ node tools/verify-m0.mjs     # projection, track shape, fixed timestep
 node tools/verify-m1.mjs     # physics, and both halves of the soul-dial rule
 node tools/verify-m2.mjs     # rivals, swept collisions, honest positions
 node tools/verify-m3.mjs     # upgrades measurably changing physics, season economy
+node tools/verify-m4.mjs     # fuel range, pit stops, and losing a race to a bad pit call
 ```
 
 Exit code is non-zero if any check fails. `tools/harness.mjs` holds the fake canvas and the assertion helpers.
@@ -54,6 +60,7 @@ Two of these take arguments worth knowing about:
 node tools/verify-m1.mjs --sweep   # scan CENTRIFUGAL for the window where both halves hold
 node tools/verify-m2.mjs --race    # print a full race classification
 node tools/verify-m3.mjs --season  # simulate an 8-race season round by round
+node tools/verify-m4.mjs --strategy  # compare pit strategies in the same race
 ```
 
 ## Lateral position

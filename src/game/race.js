@@ -27,6 +27,8 @@ export class Race {
     nemesisId = null,        // gets a small pace boost (section 4)
     playerStats = null,
     centrifugalScale = 1,
+    fuel = true,             // Arcade turns fuel off entirely (section 7)
+    damage = true,
   } = {}) {
     this.track = track;
     this.laps = laps;
@@ -60,6 +62,11 @@ export class Race {
     }));
     for (const r of this.rivals) this.entries.push(makeEntry(r.car, r.identity, r));
 
+    this.fuelEnabled = fuel;
+    this.damageEnabled = damage;
+    this.pitRepairRequested = false;   // player's "fix it at the next stop" toggle
+    this.playerPitRepairDamage = 0;    // damage cleared in the pits, billed later
+
     this.gridUp(playerSlot);
     this.order = this.entries.slice();
     this.contactsThisRace = 0;
@@ -90,6 +97,28 @@ export class Race {
       e.finished = false;
       e.finishTime = null;
       e.position = slot + 1;
+
+      // Burn rate is derived from THIS track's length, so a stock tank always
+      // covers FUEL_RANGE_LAPS laps of whatever circuit we're on. Capacity is
+      // what the fuel-tank upgrade raises, which is what turns it into range.
+      const car = e.car;
+      car.fuelCapacity = TUNE.FUEL_CAPACITY * (car.stats.fuelCapacityMul ?? 1);
+      car.fuel = car.fuelCapacity;
+      car.fuelUsed = 0;
+      car.outOfFuel = false;
+      car.fuelBurnPerUnit = this.fuelEnabled
+        ? TUNE.FUEL_CAPACITY
+          / (this.track.trackLength * TUNE.FUEL_RANGE_LAPS * TUNE.FUEL_NOMINAL_LOAD)
+        : 0;
+      car.tyreWear = 0;
+      car.tyreWearPerUnit = TUNE.TYRE_WEAR_PER_LAP * (car.stats.tyreWearRate ?? 1)
+        / this.track.trackLength;
+      car.pitHold = false;
+
+      e.pitState = 'none';
+      e.pitTimer = 0;
+      e.pitStops = 0;
+      e.dnf = false;
     }
   }
 
@@ -127,6 +156,7 @@ export class Race {
     }
 
     this.resolveCollisions(dt);
+    this.updatePitStops(dt);
     this.updateLaps(dt);
     this.updateOrder();
 
@@ -137,6 +167,60 @@ export class Race {
       const remaining = this.entries.filter(e => !e.finished);
       if (remaining.length && this.clock - this.playerEntry.finishTime > TUNE.POST_FINISH_GRACE) {
         this.settleRemaining();
+      }
+    }
+  }
+
+  // Pit stops. Section 5.4: enter, ~4s stationary, refuel and optionally repair,
+  // exit — and pitting costs you positions, because the clock keeps running while
+  // you sit there and the field does not.
+  updatePitStops(dt) {
+    const L = this.track.trackLength;
+    const boxZ = this.track.pit.boxZ;
+
+    for (const e of this.entries) {
+      if (e.finished) continue;
+      const car = e.car;
+
+      if (e.pitState === 'stopped') {
+        e.pitTimer -= dt;
+        if (e.pitTimer <= 0) {
+          const repair = e.isPlayer ? this.pitRepairRequested : car.damage > 0.4;
+          if (repair && e.isPlayer) this.playerPitRepairDamage += car.damage;
+          car.serviceInPits({ fuel: this.fuelEnabled, tyres: true, repair });
+          car.pitHold = false;
+          e.pitState = 'exiting';
+          e.pitStops++;
+          if (e.rival) e.rival.wantsPit = false;
+        }
+        continue;
+      }
+
+      if (e.pitState === 'none' && car.inPitLane) e.pitState = 'lane';
+
+      if (e.pitState === 'lane') {
+        // Did this step carry the car across the pit box? Allow for the lap wrap:
+        // the box sits just after the start line.
+        let pz = e.prevZ;
+        if (car.trackPos < pz) pz -= L;
+        if (pz < boxZ && car.trackPos >= boxZ) {
+          e.pitState = 'stopped';
+          const repair = e.isPlayer ? this.pitRepairRequested : car.damage > 0.4;
+          e.pitTimer = TUNE.PIT_STOP_SECONDS + (repair ? TUNE.PIT_REPAIR_SECONDS : 0);
+          car.pitHold = true;
+          car.speed = 0;
+        } else if (!car.inPitLane) {
+          e.pitState = 'none';        // drove back out without stopping
+        }
+      }
+
+      if (e.pitState === 'exiting' && !car.inPitLane) e.pitState = 'none';
+
+      // Out of fuel and stopped on track: that's a DNF (section 5.4).
+      if (car.outOfFuel && car.speed < 40 && !car.inPitLane) {
+        e.dnf = true;
+        e.finished = true;
+        e.finishTime = Infinity;
       }
     }
   }
@@ -293,6 +377,9 @@ export class Race {
   // Rank by distance covered; finishers keep their finishing order.
   updateOrder() {
     this.order = this.entries.slice().sort((p, q) => {
+      // A DNF is classified behind everyone still running, however far they got.
+      if (p.dnf !== q.dnf) return p.dnf ? 1 : -1;
+      if (p.dnf && q.dnf) return q.distance - p.distance;
       if (p.finished && q.finished) return p.finishTime - q.finishTime;
       if (p.finished) return -1;
       if (q.finished) return 1;
@@ -305,7 +392,7 @@ export class Race {
   // from their pace rather than simulating minutes of empty track.
   settleRemaining() {
     for (const e of this.entries) {
-      if (e.finished) continue;
+      if (e.finished || e.dnf) continue;
       const left = this.raceDistance - e.distance;
       const pace = Math.max(e.car.speed, e.car.maxSpeed * 0.55);
       e.finished = true;
@@ -331,6 +418,8 @@ export class Race {
       damage: e.car.damage,
       contacts: e.contacts || 0,
       extrapolated: !!e.extrapolated,
+      pitStops: e.pitStops || 0,
+      dnf: !!e.dnf,
     }));
   }
 
@@ -349,6 +438,23 @@ export class Race {
       lastLapDelta: e.lastLapDelta,
       slipstreaming: e.slipstreaming,
       finished: e.finished,
+      fuel: this.fuelEnabled ? e.car.fuelFraction : null,
+      fuelLaps: this.fuelEnabled ? e.car.lapsOfFuelLeft(this.track.trackLength) : null,
+      damage: e.car.damage,
+      tyreWear: e.car.tyreWear,
+      pitState: e.pitState,
+      pitTimer: e.pitTimer,
+      pitStops: e.pitStops,
+      pitRepairRequested: this.pitRepairRequested,
+      inPitWindow: this.track.inPitWindow(e.car.trackPos),
+      // True while the pit entry is still ahead but close. Without this the
+      // prompt only appeared once you were already past the entry, which is too
+      // late to move across — the lane starts at the line.
+      pitApproaching: this.fuelEnabled
+        && forwardGap(e.car.trackPos, this.track.pit.entryZ, this.track.trackLength) > 0
+        && forwardGap(e.car.trackPos, this.track.pit.entryZ, this.track.trackLength)
+          < TUNE.PIT_APPROACH_SEGMENTS * TUNE.SEGMENT_LEN,
+      dnf: e.dnf,
     };
   }
 }

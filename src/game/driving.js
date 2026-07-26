@@ -122,15 +122,41 @@ export function pickLine(car, field, track, preferred) {
   return { target: clamp(best.cand, -0.95, 0.95), blocked: best.clearance < need * 0.62 };
 }
 
+// Lining up for the pit entry: get across to the lane and slow to the limit.
+// Returns null when the pits aren't in reach yet, so the caller keeps racing.
+//
+// Shared by the rival AI and the model driver — "stop before the tank is empty"
+// is driving knowledge like any other, and a driver that ignores it just parks
+// on the circuit.
+export function pitApproachInput(car, track, base) {
+  const toLine = forwardGap(car.trackPos, track.pit.entryZ, track.trackLength);
+  const approaching = toLine >= 0 && toLine < TUNE.PIT_APPROACH_SEGMENTS * TUNE.SEGMENT_LEN;
+  if (!approaching && !track.inPitWindow(car.trackPos)) return null;
+
+  const targetX = (track.pit.xInner + track.pit.xOuter) / 2;
+  const overLimit = car.speed > car.maxSpeed * TUNE.PIT_SPEED_LIMIT * 1.25;
+  return {
+    ...base,
+    steer: clamp((targetX - car.x) * TUNE.RIVAL_STEER_GAIN, -1, 1),
+    throttle: Math.min(base.throttle, 0.25),
+    brake: overLimit ? 0.7 : 0,
+    nitro: false,
+  };
+}
+
 // A competent driver: brakes for what's coming, feeds throttle back in, and
 // steers toward the racing line while fighting the push. Deliberately not
 // superhuman — it's here to prove a corner is learnable, not to set records.
 export class ModelDriver {
-  constructor(track, { margin = 0.92, lookahead = 34, aggression = 1 } = {}) {
+  constructor(track, { margin = 0.92, lookahead = 34, aggression = 1,
+    pitAt = TUNE.MODEL_PIT_FUEL, managesFuel = true } = {}) {
     this.track = track;
     this.margin = margin;         // fraction of the holdable speed it aims for
     this.lookahead = lookahead;   // segments
     this.aggression = aggression;
+    this.pitAt = pitAt;           // fuel fraction at which it commits to a stop
+    this.managesFuel = managesFuel;
+    this.wantsPit = false;
   }
 
   // Returns an input object shaped like core/input.js produces.
@@ -167,7 +193,19 @@ export class ModelDriver {
       steer = clamp(steer + Math.sign(curveNow) * Math.min(1, Math.abs(curveNow) / 4), -1, 1);
     }
 
-    return { steer, throttle, brake, nitro: false, shiftUp: false, shiftDown: false };
+    const base = { steer, throttle, brake, nitro: false, shiftUp: false, shiftDown: false };
+
+    // Fuel strategy last, so it overrides the racing line when the tank is low.
+    if (this.managesFuel && car.fuelBurnPerUnit > 0) {
+      if (car.fuelFraction > 0.9) this.wantsPit = false;      // just been filled
+      else if (car.fuelFraction < this.pitAt) this.wantsPit = true;
+      if (this.wantsPit) {
+        const pit = pitApproachInput(car, this.track, base);
+        if (pit) return pit;
+      }
+    }
+
+    return base;
   }
 }
 

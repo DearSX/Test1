@@ -76,9 +76,11 @@ export class Garage {
       s[u.stat] = 1 + u.per * this.level(key);
     }
 
-    // Compound choice and wear ride on top of the tyre upgrade.
+    // Compound choice rides on top of the tyre upgrade. Wear itself is NOT
+    // folded in here — it changes during a race, and PlayerCar owns it so the
+    // grip you have in lap 4 differs from the grip you started with.
     const compound = TYRE_COMPOUNDS[this.tyreCompound] ?? TYRE_COMPOUNDS.medium;
-    s.gripMul *= compound.gripMul * (1 - this.tyreWear * TUNE.TYRE_WEAR_GRIP_LOSS);
+    s.gripMul *= compound.gripMul;
     s.tyreWearRate = compound.wearRate;
 
     return s;

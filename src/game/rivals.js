@@ -10,7 +10,7 @@ import { TUNE } from '../tune.js';
 import { PlayerCar, defaultStats } from './physics.js';
 import {
   lookaheadCurve, holdableSpeedPct, racingLine,
-  findObstacle, findChaser, pickLine,
+  findObstacle, findChaser, pickLine, pitApproachInput,
 } from './driving.js';
 
 export class Rival {
@@ -30,6 +30,7 @@ export class Rival {
     this.mistakeTimer = 0;
     this.lastCornerId = -1;
     this.blocking = 0;           // aggressive rivals defending a line
+    this.wantsPit = false;       // committed to a stop this lap
     this.finished = false;
     this.finishTime = null;
     this.rollLapPace();
@@ -77,6 +78,18 @@ export class Rival {
     // --- where to be on the road ---
     const curveNow = this.track.curveAt(car.trackPos);
     let targetX = racingLine(curveNow);
+
+    // Fuel strategy. Rivals run the same tank as the player, so they have to
+    // stop too — otherwise their range is a fiction and the player is the only
+    // one paying for it.
+    if (car.fuelBurnPerUnit > 0 && car.fuelFraction < TUNE.RIVAL_PIT_FUEL) {
+      this.wantsPit = true;
+    }
+    if (this.wantsPit) {
+      const pit = pitApproachInput(car, this.track,
+        { steer: 0, throttle, brake, nitro: false, shiftUp: false, shiftDown: false });
+      if (pit) return pit;
+    }
 
     const line = pickLine(car, field, this.track, targetX);
     const avoid = findObstacle(car, field, this.track);

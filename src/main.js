@@ -64,7 +64,9 @@ function startRace() {
 }
 
 function finishRace() {
-  app.report = app.career.settleRace(app.race.results(), app.race.player);
+  app.report = app.career.settleRace(app.race.results(), app.race.player, {
+    pitRepairDamage: app.race.playerPitRepairDamage,
+  });
   app.screen = SCREEN.REPORT;
 }
 
@@ -95,6 +97,7 @@ window.addEventListener('keydown', e => {
       return;
     case SCREEN.RACE:
       if (code === 'KeyM') app.race.player.manualGears = !app.race.player.manualGears;
+      if (code === 'KeyP') app.race.pitRepairRequested = !app.race.pitRepairRequested;
       if (code === 'Escape') app.screen = SCREEN.SHOP;
       return;
     case SCREEN.RESULTS:
@@ -226,5 +229,11 @@ function rivalPaint(entry) {
 }
 
 function wrap(z, L) { return ((z % L) + L) % L; }
+
+// Dev hook. Lets a browser session (or an automated check) inspect and poke game
+// state without a debugger — e.g. put the car in the pit lane, or drain the tank,
+// to look at a situation that would otherwise take a lap and a half to reach.
+// Read-only as far as the game is concerned: nothing here is called by the loop.
+window.velocity3000 = app;
 
 startLoop(update, render);

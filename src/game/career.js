@@ -11,7 +11,7 @@ import { Garage } from './garage.js';
 import { buildRoster } from '../data/rivals.js';
 import { TRACKS } from '../data/tracks/index.js';
 import { makeRng } from '../core/rng.js';
-import { MAX_LEVEL } from '../data/upgrades.js';
+import { MAX_LEVEL, CONSUMABLES } from '../data/upgrades.js';
 import { TUNE } from '../tune.js';
 
 export class Career {
@@ -86,6 +86,8 @@ export class Career {
       playerStats: this.garage.stats(),
       centrifugalScale: DIFFICULTY[this.difficulty].centrifugalScale,
       rivalPaceScale: DIFFICULTY[this.difficulty].rivalPace,
+      fuel: DIFFICULTY[this.difficulty].fuel,
+      damage: DIFFICULTY[this.difficulty].damage,
       nemesisId: nem ? nem.id : null,
       track: this.track,
     };
@@ -93,7 +95,9 @@ export class Career {
 
   // Apply a finished race: points, prize money, damage, records.
   // `results` is Race.results(); `playerCar` is the car as it crossed the line.
-  settleRace(results, playerCar) {
+  // `extra.pitRepairDamage` is damage cleared during the race in a pit stop —
+  // the work still happened, so it still shows up on the bill.
+  settleRace(results, playerCar, extra = {}) {
     const me = results.find(r => r.isPlayer);
     const prize = prizeFor(me.position);
 
@@ -120,7 +124,9 @@ export class Career {
     // Without that split the career death-spirals: a wrecked car finishes badly,
     // a bad finish can't fund the repair, and it never recovers. A simulated
     // Rookie season sat on 100% damage from round three to the end.
-    const billed = this.garage.repairCost();
+    const pitRepairBill = Math.round((extra.pitRepairDamage ?? 0) * 100)
+      * CONSUMABLES.repair.costPerPercent;
+    const billed = this.garage.repairCost() + pitRepairBill;
     let repairPaid = 0;
     if (!DIFFICULTY[this.difficulty].damageCarries && billed > 0) {
       // Charge what they can cover, and put the car right either way. Making a
@@ -130,6 +136,7 @@ export class Career {
       repairPaid = Math.min(billed, Math.max(0, this.money));
       this.money -= repairPaid;
       this.garage.damage = 0;
+      this.garage.tyreWear = 0;
     }
 
     const trackId = this.track.id;
@@ -150,6 +157,8 @@ export class Career {
       damage: this.garage.damage,
       repairCost: billed,
       repairPaid,
+      pitStops: me.pitStops ?? 0,
+      dnf: !!me.dnf,
       net: prize - repairPaid,
       moneyAfter: this.money,
     };

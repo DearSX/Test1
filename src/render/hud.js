@@ -19,7 +19,102 @@ export function drawHud(ctx, canvas, car, race = {}) {
   drawTacho(ctx, pad + r * 0.75, H - pad - r * 0.4, r * 0.75, car);
   drawGripMeter(ctx, W / 2, H - pad * 0.5, W * 0.24, unit * 0.014, car);
   drawReadouts(ctx, W, H, unit, car, race);
-  drawWarnings(ctx, W, H, unit, car);
+  drawGauges(ctx, W, H, unit, race);
+  drawWarnings(ctx, W, H, unit, car, race);
+  drawPitStatus(ctx, W, H, unit, race);
+}
+
+// Fuel, damage and tyre bars, stacked top-right under the controls hint.
+// Fuel is the one you watch, so it gets the amber/red treatment (section 5.4).
+function drawGauges(ctx, W, H, unit, race) {
+  const barW = Math.min(W * 0.2, unit * 0.3);
+  const barH = unit * 0.022;
+  const x = W - barW - unit * 0.035;
+  // Values render right-aligned INSIDE the bar. Drawn to the right of it they
+  // ran off the edge of the canvas and got clipped.
+  let y = unit * 0.14;
+  const s = Math.round(unit * 0.024);
+
+  const bars = [];
+  if (race.fuel !== null && race.fuel !== undefined) {
+    const f = race.fuel;
+    bars.push({
+      label: 'FUEL',
+      pct: f,
+      color: f <= TUNE.FUEL_CRITICAL ? '#ff4438' : f <= TUNE.FUEL_WARN ? '#ffb020' : '#4ade80',
+      note: isFinite(race.fuelLaps) ? `${race.fuelLaps.toFixed(1)} laps` : '',
+    });
+  }
+  if (race.damage !== undefined) {
+    bars.push({
+      label: 'DMG', pct: race.damage,
+      color: race.damage > 0.6 ? '#ff4438' : race.damage > 0.3 ? '#ffb020' : 'rgba(230,240,255,0.6)',
+      note: `${Math.round(race.damage * 100)}%`,
+    });
+  }
+  if (race.tyreWear !== undefined) {
+    bars.push({
+      label: 'TYRE', pct: 1 - race.tyreWear,
+      color: race.tyreWear > 0.7 ? '#ff4438' : race.tyreWear > 0.45 ? '#ffb020' : '#7df9ff',
+      note: `${Math.round((1 - race.tyreWear) * 100)}%`,
+    });
+  }
+
+  ctx.save();
+  ctx.font = `700 ${s}px ${FONT}`;
+  for (const b of bars) {
+    ctx.textAlign = 'right';
+    ctx.fillStyle = 'rgba(125,249,255,0.65)';
+    ctx.fillText(b.label, x - unit * 0.012, y + barH * 0.85);
+
+    ctx.fillStyle = 'rgba(6,10,20,0.7)';
+    ctx.fillRect(x, y, barW, barH);
+    ctx.fillStyle = b.color;
+    ctx.fillRect(x, y, barW * Math.max(0, Math.min(1, b.pct)), barH);
+    ctx.strokeStyle = 'rgba(230,240,255,0.3)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x + 0.5, y + 0.5, barW - 1, barH - 1);
+
+    if (b.note) {
+      ctx.textAlign = 'right';
+      ctx.fillStyle = 'rgba(6,10,20,0.9)';
+      ctx.font = `700 ${Math.round(s * 0.78)}px ${FONT}`;
+      ctx.fillText(b.note, x + barW - barH * 0.35, y + barH * 0.82);
+      ctx.font = `700 ${s}px ${FONT}`;
+    }
+    y += barH * 1.9;
+  }
+  ctx.restore();
+}
+
+function drawPitStatus(ctx, W, H, unit, race) {
+  if (!race.pitState) return;
+  let text = null, color = '#7df9ff';
+
+  if (race.pitState === 'stopped') {
+    text = `IN THE PITS — ${race.pitTimer.toFixed(1)}s`;
+    color = '#ffb020';
+  } else if (race.pitState === 'lane') {
+    text = 'PIT LANE';
+  } else if (race.fuel !== null && race.fuel <= TUNE.FUEL_WARN
+    && (race.pitApproaching || race.inPitWindow)) {
+    text = race.inPitWindow ? 'PIT LANE LEFT — steer left now' : 'PIT ENTRY AHEAD — move left';
+    color = '#ffb020';
+  }
+  if (!text) return;
+
+  ctx.save();
+  ctx.font = `700 ${Math.round(unit * 0.038)}px ${FONT}`;
+  ctx.textAlign = 'center';
+  ctx.fillStyle = color;
+  ctx.fillText(text, W / 2, H * 0.32);
+  if (race.pitState === 'stopped' || race.pitState === 'lane') {
+    ctx.font = `700 ${Math.round(unit * 0.022)}px ${FONT}`;
+    ctx.fillStyle = 'rgba(230,240,255,0.7)';
+    ctx.fillText(race.pitRepairRequested ? 'repairs booked (P to skip)' : 'fuel + tyres only (P to add repairs)',
+      W / 2, H * 0.37);
+  }
+  ctx.restore();
 }
 
 function drawSpeedo(ctx, cx, cy, r, car) {
@@ -151,9 +246,11 @@ function drawReadouts(ctx, W, H, unit, car, race) {
   ctx.restore();
 }
 
-function drawWarnings(ctx, W, H, unit, car) {
+function drawWarnings(ctx, W, H, unit, car, race = {}) {
   let text = null, color = null;
-  if (car.crashed) { text = 'CRASH'; color = '#ff4438'; }
+  if (race.dnf) { text = 'OUT OF FUEL — DNF'; color = '#ff4438'; }
+  else if (car.outOfFuel) { text = 'OUT OF FUEL'; color = '#ff4438'; }
+  else if (car.crashed) { text = 'CRASH'; color = '#ff4438'; }
   else if (car.offRoad) { text = 'OFF ROAD'; color = '#ffb020'; }
   if (!text) return;
   ctx.save();

@@ -122,6 +122,34 @@ export const TUNE = {
   LINE_PREFERENCE_WEIGHT: 0.35,  // how much the racing line is worth vs clear air
   RIVAL_STEER_GAIN: 2.4,
 
+  // --- fuel and pit stops (M4, section 5.4) ---
+  FUEL_CAPACITY: 100,          // display units; a full tank
+  FUEL_RANGE_LAPS: 2.5,        // laps a stock tank covers AT RACE PACE
+  // Burn scales with throttle, so "2.5 laps" has to be pinned to a realistic
+  // average load. Calibrated at full throttle instead, a real racing lap (which
+  // spends plenty of time off the throttle) stretched the tank to 3.4 laps and a
+  // 3-lap race needed no stop at all — the whole strategy layer did nothing.
+  FUEL_NOMINAL_LOAD: 0.75,     // average throttle load a racing lap actually uses
+  FUEL_IDLE_BURN: 0.35,        // burn floor when coasting (× full-throttle rate)
+  FUEL_NITRO_BURN: 3,          // × while nitro is lit
+  FUEL_WARN: 0.25,             // bar turns amber
+  FUEL_CRITICAL: 0.1,          // bar turns red
+
+  PIT_WINDOW_SEGMENTS: 90,     // pit lane runs alongside the start/finish straight
+  PIT_BOX_SEGMENT: 45,
+  PIT_X_INNER: 1.0,            // pit lane occupies x in [-OUTER, -INNER]...
+  PIT_X_OUTER: 1.5,            // ...so the left verge of the straight IS the lane
+  PIT_SPEED_LIMIT: 0.22,       // × maxSpeed, enforced in the lane
+  PIT_STOP_SECONDS: 4,         // stationary time (section 5.4)
+  PIT_REPAIR_SECONDS: 2.2,     // extra if you also take repairs
+  RIVAL_PIT_FUEL: 0.18,        // rivals dive in below this fraction of a tank
+  MODEL_PIT_FUEL: 0.35,        // the model driver's own call (used by the verifiers)
+  PIT_APPROACH_SEGMENTS: 22,   // how early a car lines up for the pit entry
+
+  // --- tyre wear (M4) ---
+  TYRE_WEAR_PER_LAP: 0.30,     // at medium compound, cruising
+  TYRE_WEAR_SCRUB: 1.6,        // × extra wear when the tyres are working hard
+
   // --- career (M3) ---
   STARTING_MONEY: 5000,
   RACES_PER_SEASON: 8,

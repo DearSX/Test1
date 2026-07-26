@@ -123,6 +123,31 @@ export class Track {
       seg.looped = false;
       seg.clip = 0;
     }
+
+    // Pit lane: the left verge of the start/finish straight (section 5.4).
+    // Inside this window, x beyond the road edge is pit lane rather than grass —
+    // that's how you get in without the off-road penalty stopping you.
+    this.pit = {
+      entryZ: 0,
+      exitZ: TUNE.PIT_WINDOW_SEGMENTS * this.segmentLength,
+      boxZ: TUNE.PIT_BOX_SEGMENT * this.segmentLength,
+      xInner: -TUNE.PIT_X_INNER,
+      xOuter: -TUNE.PIT_X_OUTER,
+    };
+  }
+
+  // Is this position inside the pit lane surface?
+  inPitLane(z, x) {
+    const p = this.pit;
+    const wrapped = ((z % this.trackLength) + this.trackLength) % this.trackLength;
+    return wrapped >= p.entryZ && wrapped <= p.exitZ
+      && x <= p.xInner && x >= p.xOuter - 0.12;
+  }
+
+  // Is this position within the stretch where entering the pits is possible?
+  inPitWindow(z) {
+    const wrapped = ((z % this.trackLength) + this.trackLength) % this.trackLength;
+    return wrapped >= this.pit.entryZ && wrapped <= this.pit.exitZ;
   }
 
   // Segment containing world-position z (wraps around the lap).

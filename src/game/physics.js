@@ -28,6 +28,19 @@ export class PlayerCar {
     this.rpm = TUNE.RPM_IDLE;
     this.damage = 0;        // 0..1
 
+    // Fuel and tyres (M4). fuelBurnPerUnit is set by race.js from the track
+    // length, so a stock tank covers FUEL_RANGE_LAPS laps of whatever circuit
+    // this is rather than a fixed distance.
+    this.fuelCapacity = TUNE.FUEL_CAPACITY * (this.stats.fuelCapacityMul ?? 1);
+    this.fuel = this.fuelCapacity;
+    this.fuelBurnPerUnit = 0;
+    this.fuelUsed = 0;
+    this.outOfFuel = false;
+    this.tyreWear = 0;              // 0..1, costs grip as it climbs
+    this.tyreWearPerUnit = 0;
+    this.inPitLane = false;
+    this.pitHold = false;           // race.js pins the car during a stop
+
     this.nitroCharges = TUNE.NITRO_CHARGES_START;
     this.nitroTimer = 0;
     this.crashTimer = 0;
@@ -63,9 +76,21 @@ export class PlayerCar {
     const base = TUNE.SURFACE_GRIP[surface] ?? 1;
     const g = base
       * this.stats.gripMul
+      * (1 - this.tyreWear * TUNE.TYRE_WEAR_GRIP_LOSS)
       * (1 - this.damage * TUNE.DAMAGE_GRIP_LOSS)
       * (this.nitroTimer > 0 ? TUNE.NITRO_GRIP_PENALTY : 1);
     return Math.max(g, 0.12);
+  }
+
+  get fuelFraction() { return this.fuelCapacity > 0 ? this.fuel / this.fuelCapacity : 0; }
+
+  // Range left, in laps, at the current burn rate. What the strategy call is
+  // actually made on.
+  lapsOfFuelLeft(trackLength) {
+    if (this.fuelBurnPerUnit <= 0) return Infinity;
+    // Quoted at race pace, not at full throttle, so the number on the HUD is the
+    // number the strategy call actually depends on.
+    return this.fuel / (this.fuelBurnPerUnit * trackLength * TUNE.FUEL_NOMINAL_LOAD);
   }
 
   get surface() {
@@ -80,6 +105,21 @@ export class PlayerCar {
   update(dt, input) {
     const maxSpeed = this.maxSpeed;
     const effMax = this.effectiveMaxSpeed;
+
+    // Held stationary in the pit box: no physics, no fuel, no progress.
+    if (this.pitHold) {
+      this.speed = 0;
+      this.rpm = TUNE.RPM_IDLE;
+      this.lateralSlip = 0;
+      this.tyreScrub = 0;
+      return;
+    }
+
+    // Dry tank: the engine is gone and you coast to a stop. Section 5.4.
+    this.outOfFuel = this.fuel <= 0;
+    if (this.outOfFuel) {
+      input = { ...input, throttle: 0, nitro: false };
+    }
 
     if (this.nitroTimer > 0) this.nitroTimer = Math.max(0, this.nitroTimer - dt);
     if (this.shiftFlash > 0) this.shiftFlash = Math.max(0, this.shiftFlash - dt);
@@ -104,7 +144,10 @@ export class PlayerCar {
 
     // Off-road is decided from where the car currently is, before this step's
     // steering moves it, so traction loss and engine cut agree with each other.
-    this.offRoad = Math.abs(this.x) > TUNE.OFFROAD_X;
+    // The pit lane is a surface, not a verge — beyond the road edge inside the
+    // pit window you're in the lane, not the grass.
+    this.inPitLane = this.track.inPitLane(this.trackPos, this.x);
+    this.offRoad = !this.inPitLane && Math.abs(this.x) > TUNE.OFFROAD_X;
 
     // --- longitudinal ---
     const gearMul = TUNE.GEAR_ACCEL[this.gear];
@@ -166,11 +209,47 @@ export class PlayerCar {
 
     // --- scenery = crash ---
     // Note there is no clamp inside |x| <= CRASH_X. Leaving the road has to be
-    // possible, or the soul dial has nothing to punish.
-    if (Math.abs(this.x) > TUNE.CRASH_X) this.crash();
+    // possible, or the soul dial has nothing to punish. The pit lane is exempt:
+    // its outer wall is a limit, not an accident.
+    if (this.inPitLane) {
+      this.x = Math.max(this.x, TUNE.PIT_X_OUTER * -1);
+      const limit = maxSpeed * TUNE.PIT_SPEED_LIMIT;
+      if (this.speed > limit) this.speed = limit;
+    } else if (Math.abs(this.x) > TUNE.CRASH_X) {
+      this.crash();
+    }
 
+    this.burnFuel(dt, input);
+    this.wearTyres(dt);
     this.advance(dt);
     this.rpm = this.computeRpm(maxSpeed);
+  }
+
+  // Burns per distance, scaled by throttle and nitro (section 5.4). Distance
+  // rather than time, so lifting genuinely saves fuel instead of just taking
+  // longer to use the same amount.
+  burnFuel(dt, input) {
+    if (this.fuelBurnPerUnit <= 0) return;
+    const load = TUNE.FUEL_IDLE_BURN + (1 - TUNE.FUEL_IDLE_BURN) * (input.throttle ?? 0);
+    const nitro = this.nitroTimer > 0 ? TUNE.FUEL_NITRO_BURN : 1;
+    const burn = this.speed * dt * this.fuelBurnPerUnit * load * nitro;
+    this.fuel = Math.max(0, this.fuel - burn);
+    this.fuelUsed += burn;
+  }
+
+  // Wear climbs with distance, and faster when the tyres are actually working.
+  wearTyres(dt) {
+    if (this.tyreWearPerUnit <= 0) return;
+    const load = 1 + this.tyreScrub * TUNE.TYRE_WEAR_SCRUB;
+    this.tyreWear = Math.min(1, this.tyreWear + this.speed * dt * this.tyreWearPerUnit * load);
+  }
+
+  // Called by race.js when a pit stop completes.
+  serviceInPits({ fuel = true, tyres = true, repair = false } = {}) {
+    if (fuel) this.fuel = this.fuelCapacity;
+    if (tyres) this.tyreWear = 0;
+    if (repair) this.damage = 0;
+    this.outOfFuel = false;
   }
 
   crash() {
