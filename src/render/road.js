@@ -9,8 +9,6 @@ import { TUNE } from '../tune.js';
 export const DEFAULT_COLORS = {
   skyTop: '#0b1030',
   skyBottom: '#2a3f7a',
-  horizonGlow: '#ff9d5c',
-  sea: '#123a52',
   grassLight: '#2e8f4e',
   grassDark: '#278245',
   roadLight: '#5a5a62',
@@ -114,17 +112,13 @@ export class RoadRenderer {
 
   drawBackdrop(ctx, W, H) {
     const c = this.colors;
-    const sky = ctx.createLinearGradient(0, 0, 0, H * 0.6);
+    // Runs all the way down and ends on the fog colour, so the hazed far
+    // segments meet the sky with no seam. Real theme backdrops arrive at M6.
+    const sky = ctx.createLinearGradient(0, 0, 0, H * 0.55);
     sky.addColorStop(0, c.skyTop);
-    sky.addColorStop(0.75, c.skyBottom);
-    sky.addColorStop(1, c.horizonGlow);
+    sky.addColorStop(1, c.skyBottom);
     ctx.fillStyle = sky;
     ctx.fillRect(0, 0, W, H);
-
-    // Sea band below the horizon (which sits at H/2 in this projection).
-    // Real theme backdrops arrive at M6.
-    ctx.fillStyle = c.sea;
-    ctx.fillRect(0, H * 0.5, W, H * 0.5);
   }
 
   drawSegment(ctx, W, seg) {

@@ -17,7 +17,13 @@ then open `http://localhost:3000` (serve) or `http://localhost:8000` (python).
 ## Status
 
 - **M0 — Skeleton: DONE.** Fixed 60Hz timestep + accumulator, canvas + resize, one authored track ("Island Loop", 2,425 segments) rendering with curves and elevation at a constant cruise speed. Render interpolation is wired in (`render(alpha)`).
-- M1 — Physics: next. Throttle/brake/gears/steering/centrifugal land in `src/game/physics.js`. The soul dial is `TUNE.CENTRIFUGAL` in `src/tune.js`.
+- **M1 — Physics: DONE.** Throttle, brake, six-speed box with tacho (auto or manual), continuous analog steering, centrifugal force, per-surface grip, off-road, crashes, nitro. Keyboard, touch and gamepad. `CENTRIFUGAL` tuned to **0.78**.
+- M2 — Racing: next. 19 rivals on the same track model, swept collisions, positions, laps.
+
+### Controls
+
+`↑` throttle · `↓` brake · `←` `→` steer · `Shift` nitro · `M` toggle manual gears (`Q`/`E` to shift) · `R` restart.
+On a phone: drag the left half of the screen to steer, hold the lower right for throttle, below that for brake, upper right for nitro.
 
 ## Tuning
 
