@@ -19,12 +19,15 @@ then open `http://localhost:3000` (serve) or `http://localhost:8000` (python).
 - **M0 — Skeleton: DONE.** Fixed 60Hz timestep + accumulator, canvas + resize, one authored track ("Island Loop", 2,425 segments) rendering with curves and elevation at a constant cruise speed. Render interpolation is wired in (`render(alpha)`).
 - **M1 — Physics: DONE.** Throttle, brake, six-speed box with tacho (auto or manual), continuous analog steering, centrifugal force, per-surface grip, off-road, crashes, nitro. Keyboard, touch and gamepad. `CENTRIFUGAL` tuned to **0.78**.
 - **M2 — Racing: DONE.** 19 rivals running the same physics on the same track, swept collisions with no pass-through, slipstream, honest positions, 3-lap races with lap timing and a results screen.
-- M3 — Career: next. Season, prize money, upgrade shop, stats wired into physics.
+- **M3 — Career: DONE.** 8-race seasons, championship points, prize money, 4 divisions with promotion, a 6-category upgrade shop wired into physics, standings, and 4 tracks. One tyre level is worth 0.85s a lap.
+- M4 — Strategy: next. Fuel, pit stops, damage, tyre compounds, nemesis.
 
 ### Controls
 
-`↑` throttle · `↓` brake · `←` `→` steer · `Shift` nitro · `M` toggle manual gears (`Q`/`E` to shift) · `R` restart.
+**Driving:** `↑` throttle · `↓` brake · `←` `→` steer · `Shift` nitro · `M` toggle manual gears (`Q`/`E` to shift).
 On a phone: drag the left half of the screen to steer, hold the lower right for throttle, below that for brake, upper right for nitro.
+
+**Garage:** `↑` `↓` select · `Enter` buy · `S` standings · `R` go racing.
 
 ## Tuning
 
@@ -40,6 +43,7 @@ Each milestone has a headless check that runs the real game modules under Node a
 node tools/verify-m0.mjs     # projection, track shape, fixed timestep
 node tools/verify-m1.mjs     # physics, and both halves of the soul-dial rule
 node tools/verify-m2.mjs     # rivals, swept collisions, honest positions
+node tools/verify-m3.mjs     # upgrades measurably changing physics, season economy
 ```
 
 Exit code is non-zero if any check fails. `tools/harness.mjs` holds the fake canvas and the assertion helpers.
@@ -49,6 +53,7 @@ Two of these take arguments worth knowing about:
 ```
 node tools/verify-m1.mjs --sweep   # scan CENTRIFUGAL for the window where both halves hold
 node tools/verify-m2.mjs --race    # print a full race classification
+node tools/verify-m3.mjs --season  # simulate an 8-race season round by round
 ```
 
 ## Lateral position

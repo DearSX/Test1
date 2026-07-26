@@ -101,8 +101,11 @@ export const TUNE = {
   CAR_WIDTH: 0.33,
   COLLIDE_SPEED_LOSS: 0.82,  // × speed for both cars on contact
   COLLIDE_SHOVE: 0.28,       // lateral shove apart
-  // 0.04 per contact wrecked a car in a single race once traffic was dense.
-  COLLIDE_DAMAGE: 0.02,
+  // A racy 3-lap stint from the back takes ~30 contacts. 0.04 wrecked the car
+  // outright, 0.02 pinned it at 100%, and 0.012 still billed more than a
+  // midfield prize every single race. At 0.008 a hard race runs ~25% damaged;
+  // getting properly wrecked now takes crashes, which cost 0.12 each.
+  COLLIDE_DAMAGE: 0.008,
   CONTACT_COOLDOWN: 0.6,     // seconds before the same pair can trade paint again
   SEPARATION_ITERATIONS: 6,  // relaxation passes to untangle a pile-up
 
@@ -118,6 +121,13 @@ export const TUNE = {
   RIVAL_AVOID_WIDTH: 0.4,    // lateral gap counted as "in the way"
   LINE_PREFERENCE_WEIGHT: 0.35,  // how much the racing line is worth vs clear air
   RIVAL_STEER_GAIN: 2.4,
+
+  // --- career (M3) ---
+  STARTING_MONEY: 5000,
+  RACES_PER_SEASON: 8,
+  PROMOTION_PLACES: 3,       // top 3 in the championship are promoted
+  NEMESIS_PACE_BOOST: 1.03,  // the rival nearest you on points tries harder
+  TYRE_WEAR_GRIP_LOSS: 0.18, // grip lost at fully worn tyres (M4)
 
   // --- M0 only: constant cruise speed for the scroll test ---
   M0_CRUISE_SPEED: 12000,

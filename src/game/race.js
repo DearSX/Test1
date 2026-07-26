@@ -22,7 +22,9 @@ export class Race {
     fieldSize = TUNE.FIELD_SIZE,
     playerStart = null,          // grid slot, 0 = pole; default = last
     seed = 1,
-    paceScale = 1,
+    paceScale = 1,           // division (section 5.1)
+    rivalPaceScale = 1,      // difficulty (section 7)
+    nemesisId = null,        // gets a small pace boost (section 4)
     playerStats = null,
     centrifugalScale = 1,
   } = {}) {
@@ -38,9 +40,14 @@ export class Race {
     this.player.centrifugalScale = centrifugalScale;
     this.player.isPlayer = true;
 
-    const roster = buildRoster(fieldSize, paceScale, this.rng);
+    const roster = buildRoster(fieldSize, paceScale * rivalPaceScale, this.rng);
+    this.nemesisId = nemesisId;
     this.rivals = roster.map(id => {
-      const r = new Rival(track, id, this.rng);
+      // The nemesis is a real threat, not a label on the pre-race screen.
+      const boosted = nemesisId && id.id === nemesisId
+        ? { ...id, pace: id.pace * TUNE.NEMESIS_PACE_BOOST, isNemesis: true }
+        : id;
+      const r = new Rival(track, boosted, this.rng);
       r.car.centrifugalScale = centrifugalScale;
       return r;
     });

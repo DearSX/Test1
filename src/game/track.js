@@ -57,14 +57,19 @@ export class TrackBuilder {
     const denom = Math.max(total - 1, 1);
     const yAt = (n) => easeInOut(startY, endY, n / denom);
 
+    // Curvature ramps use (n+1)/len for the same reason the elevation does: the
+    // enter ramp has to actually arrive at `curve` before the hold begins, and
+    // the exit ramp has to actually arrive back at zero. With n/len the exit left
+    // a residual curve on the last segment, so any track ending on a corner
+    // never quite straightened out and the start line met the finish at an angle.
     for (let n = 0; n < enter; n++) {
-      this._push(easeIn(0, curve, n / enter), yAt(n), surface);
+      this._push(easeIn(0, curve, (n + 1) / enter), yAt(n), surface);
     }
     for (let n = 0; n < hold; n++) {
       this._push(curve, yAt(enter + n), surface);
     }
     for (let n = 0; n < exit; n++) {
-      this._push(easeInOut(curve, 0, n / exit), yAt(enter + hold + n), surface);
+      this._push(easeInOut(curve, 0, (n + 1) / exit), yAt(enter + hold + n), surface);
     }
   }
 
