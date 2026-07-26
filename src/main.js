@@ -17,6 +17,7 @@ import {
 import { SaveStore, downloadSave, pickSaveFile } from './core/storage.js';
 import { Audio } from './core/audio.js';
 import { drawMinimap } from './render/minimap.js';
+import { drawRaceButtons, buttonAt, buttonZones, hasTouch } from './render/touchbuttons.js';
 import { themeFor, placeScenery, drawScenery, buildBackdrop } from './render/themes/index.js';
 import { DIFFICULTY } from './game/career.js';
 import { Effects } from './render/effects.js';
@@ -95,10 +96,20 @@ window.addEventListener('touchstart', firstGesture);
 // garage, results — was keydown-only, so a phone could not get past the first
 // screen at all.
 canvas.addEventListener('pointerdown', e => {
-  if (app.screen === SCREEN.RACE) return;      // driving owns touch during a race
   const rect = canvas.getBoundingClientRect();
   const x = (e.clientX - rect.left) * (canvas.width / rect.width);
   const y = (e.clientY - rect.top) * (canvas.height / rect.height);
+
+  // During a race the only taps this handles are the HUD buttons; everything
+  // else on screen is driving, which core/input.js owns.
+  if (app.screen === SCREEN.RACE) {
+    const button = buttonAt(x, y);
+    if (!button) return;
+    e.preventDefault();
+    pressRaceButton(button);
+    return;
+  }
+
   e.preventDefault();
 
   // Screens drawn by hud.js have no hit-region table; a tap anywhere continues.
@@ -247,6 +258,29 @@ function activateSlotRow(index) {
   }
 
   startCareer(row.slot, row.summary.empty ? null : store.read(row.slot));
+}
+
+function pressRaceButton(id) {
+  const race = app.race;
+  switch (id) {
+    case 'pit':
+      race.pitRepairRequested = !race.pitRepairRequested;
+      break;
+    case 'gears':
+      race.player.manualGears = !race.player.manualGears;
+      app.career.settings.manualGears = race.player.manualGears;
+      break;
+    case 'mute': {
+      const muted = audio.toggleMute();
+      app.career.settings.muted = muted;
+      autosave();
+      break;
+    }
+    case 'menu':
+      app.sel = 0;
+      app.screen = SCREEN.SHOP;
+      break;
+  }
 }
 
 function shopKey(code) {
@@ -419,6 +453,12 @@ function renderRace(ctx, alpha) {
   })));
 
   drawHud(ctx, canvas, car, race.hudState());
+  drawRaceButtons(ctx, canvas, {
+    pitRepairs: race.pitRepairRequested,
+    manualGears: car.manualGears,
+    muted: audio.muted,
+  });
+  input.exclusionZones = buttonZones();
   if (race.phase === PHASE.COUNTDOWN) drawCountdown(ctx, canvas, race.countdown);
 }
 
@@ -439,5 +479,6 @@ function wrap(z, L) { return ((z % L) + L) % L; }
 // Read-only as far as the game is concerned: nothing here is called by the loop.
 window.velocity3000 = app;
 window.velocity3000.hitRegions = debugHitRegions;
+window.velocity3000.raceButtons = buttonZones;
 
 startLoop(update, render);

@@ -29,6 +29,10 @@ export class Input {
     this.touchActive = false;
     this.gamepadIndex = null;
     this._edge = { shiftUp: false, shiftDown: false, nitro: false };
+    // Rects the HUD's own buttons occupy. A touch inside one of these is not
+    // steering, throttle or nitro — without this, tapping an on-screen button
+    // would also blip the throttle underneath it.
+    this.exclusionZones = [];
 
     target.addEventListener('keydown', e => {
       if (isGameKey(e.code)) e.preventDefault();
@@ -47,6 +51,11 @@ export class Input {
 
     const classify = (t) => {
       const r = canvas.getBoundingClientRect();
+      const cx = (t.clientX - r.left) * (canvas.width / r.width);
+      const cy = (t.clientY - r.top) * (canvas.height / r.height);
+      for (const z of this.exclusionZones) {
+        if (cx >= z.x && cx <= z.x + z.w && cy >= z.y && cy <= z.y + z.h) return { kind: 'ui' };
+      }
       const px = (t.clientX - r.left) / r.width;
       const py = (t.clientY - r.top) / r.height;
       if (px < 0.5) return { kind: 'steer', originX: t.clientX, width: r.width };

@@ -25,7 +25,7 @@
 <script>
 (function () {
 'use strict';
-// Bundled from 35 ES modules by tools/build-single-file.mjs.
+// Bundled from 36 ES modules by tools/build-single-file.mjs.
 // Each module keeps its own scope; getters are used for the exports so
 // function declarations still hoist the way they do as real modules.
 const __m = {};
@@ -290,6 +290,10 @@ class Input {
     this.touchActive = false;
     this.gamepadIndex = null;
     this._edge = { shiftUp: false, shiftDown: false, nitro: false };
+    // Rects the HUD's own buttons occupy. A touch inside one of these is not
+    // steering, throttle or nitro — without this, tapping an on-screen button
+    // would also blip the throttle underneath it.
+    this.exclusionZones = [];
 
     target.addEventListener('keydown', e => {
       if (isGameKey(e.code)) e.preventDefault();
@@ -308,6 +312,11 @@ class Input {
 
     const classify = (t) => {
       const r = canvas.getBoundingClientRect();
+      const cx = (t.clientX - r.left) * (canvas.width / r.width);
+      const cy = (t.clientY - r.top) * (canvas.height / r.height);
+      for (const z of this.exclusionZones) {
+        if (cx >= z.x && cx <= z.x + z.w && cy >= z.y && cy <= z.y + z.h) return { kind: 'ui' };
+      }
       const px = (t.clientX - r.left) / r.width;
       const py = (t.clientY - r.top) / r.height;
       if (px < 0.5) return { kind: 'steer', originX: t.clientX, width: r.width };
@@ -3843,6 +3852,105 @@ function drawMinimap(ctx, canvas, track, entries, opts = {}) {
   };
 })();
 
+// ===== src/render/touchbuttons.js =====
+__m['src/render/touchbuttons.js'] = (function () {
+
+
+// On-screen buttons for the things that are keyboard-only during a race.
+//
+// P (book pit repairs), M (manual gears), K (mute) and Esc (leave the race) had
+// no touch equivalent, so on a phone those features simply didn't exist. They
+// are drawn only when the device actually has touch — a desktop has the keys and
+// doesn't need the clutter.
+//
+// The buttons also register exclusion zones with core/input.js. Without that a
+// tap on a button would ALSO be read as throttle or nitro by the driving touch
+// zones underneath it, and you'd blip the throttle every time you muted.
+
+const FONT = 'ui-monospace, Menlo, Consolas, monospace';
+
+let regions = [];
+
+function hasTouch() {
+  return typeof navigator !== 'undefined'
+    && (navigator.maxTouchPoints > 0 || 'ontouchstart' in globalThis);
+}
+
+// The rects the driving controls must ignore.
+function buttonZones() {
+  return regions.map(r => ({ x: r.x, y: r.y, w: r.w, h: r.h }));
+}
+
+function buttonAt(px, py) {
+  for (const r of regions) {
+    if (px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h) return r.id;
+  }
+  return null;
+}
+
+// state: { pitRepairs, manualGears, muted }
+function drawRaceButtons(ctx, canvas, state) {
+  regions = [];
+  if (!hasTouch()) return;
+
+  const W = canvas.width, H = canvas.height;
+  const unit = Math.min(W, H);
+
+  const buttons = [
+    { id: 'pit', label: 'PIT', on: state.pitRepairs, sub: state.pitRepairs ? 'FIX' : 'OFF' },
+    { id: 'gears', label: 'GEAR', on: state.manualGears, sub: state.manualGears ? 'MAN' : 'AUTO' },
+    { id: 'mute', label: 'SND', on: !state.muted, sub: state.muted ? 'OFF' : 'ON' },
+    { id: 'menu', label: 'MENU', on: false, sub: '' },
+  ];
+
+  // Sit in the gap between the lap readouts (top left) and the gauges (top
+  // right), never overlapping either.
+  const leftEdge = unit * 0.035 + Math.round(unit * 0.032) * 9.8;
+  const rightEdge = W - Math.min(W * 0.2, unit * 0.3) - Math.round(unit * 0.024) * 3.4 - unit * 0.045;
+  const available = Math.max(rightEdge - leftEdge, unit * 0.5);
+
+  const gap = unit * 0.012;
+  const size = Math.max(
+    unit * 0.085,
+    Math.min(unit * 0.115, (available - gap * (buttons.length - 1)) / buttons.length));
+  const totalW = size * buttons.length + gap * (buttons.length - 1);
+  let x = leftEdge + Math.max(0, (available - totalW) / 2);
+  const y = unit * 0.03;
+
+  ctx.save();
+  for (const b of buttons) {
+    regions.push({ id: b.id, x, y, w: size, h: size });
+
+    ctx.fillStyle = b.on ? 'rgba(125,249,255,0.22)' : 'rgba(6,10,20,0.6)';
+    ctx.fillRect(x, y, size, size);
+    ctx.strokeStyle = b.on ? 'rgba(125,249,255,0.85)' : 'rgba(125,249,255,0.35)';
+    ctx.lineWidth = Math.max(1, unit * 0.003);
+    ctx.strokeRect(x + 0.5, y + 0.5, size - 1, size - 1);
+
+    ctx.textAlign = 'center';
+    ctx.fillStyle = b.on ? '#7df9ff' : 'rgba(230,240,255,0.85)';
+    ctx.font = `700 ${Math.round(size * 0.26)}px ${FONT}`;
+    ctx.fillText(b.label, x + size / 2, y + size * (b.sub ? 0.42 : 0.6));
+    if (b.sub) {
+      ctx.font = `700 ${Math.round(size * 0.22)}px ${FONT}`;
+      ctx.fillStyle = b.on ? 'rgba(125,249,255,0.8)' : 'rgba(230,240,255,0.5)';
+      ctx.fillText(b.sub, x + size / 2, y + size * 0.75);
+    }
+
+    x += size + gap;
+  }
+  ctx.restore();
+}
+
+
+  return {
+    get hasTouch() { return hasTouch; },
+    get buttonZones() { return buttonZones; },
+    get buttonAt() { return buttonAt; },
+    get drawRaceButtons() { return drawRaceButtons; },
+  };
+})();
+
 // ===== src/data/rivals.js =====
 __m['src/data/rivals.js'] = (function () {
 
@@ -6137,6 +6245,10 @@ __m['src/main.js'] = (function () {
   const pickSaveFile = __m['src/core/storage.js'].pickSaveFile;
   const Audio = __m['src/core/audio.js'].Audio;
   const drawMinimap = __m['src/render/minimap.js'].drawMinimap;
+  const drawRaceButtons = __m['src/render/touchbuttons.js'].drawRaceButtons;
+  const buttonAt = __m['src/render/touchbuttons.js'].buttonAt;
+  const buttonZones = __m['src/render/touchbuttons.js'].buttonZones;
+  const hasTouch = __m['src/render/touchbuttons.js'].hasTouch;
   const themeFor = __m['src/render/themes/index.js'].themeFor;
   const placeScenery = __m['src/render/themes/index.js'].placeScenery;
   const drawScenery = __m['src/render/themes/index.js'].drawScenery;
@@ -6157,6 +6269,7 @@ __m['src/main.js'] = (function () {
 // The whole game: slot picker -> garage -> pre-race -> race -> report -> garage,
 // across 8-race seasons and four divisions, autosaving at every point the state
 // actually changes.
+
 
 
 
@@ -6246,10 +6359,20 @@ window.addEventListener('touchstart', firstGesture);
 // garage, results — was keydown-only, so a phone could not get past the first
 // screen at all.
 canvas.addEventListener('pointerdown', e => {
-  if (app.screen === SCREEN.RACE) return;      // driving owns touch during a race
   const rect = canvas.getBoundingClientRect();
   const x = (e.clientX - rect.left) * (canvas.width / rect.width);
   const y = (e.clientY - rect.top) * (canvas.height / rect.height);
+
+  // During a race the only taps this handles are the HUD buttons; everything
+  // else on screen is driving, which core/input.js owns.
+  if (app.screen === SCREEN.RACE) {
+    const button = buttonAt(x, y);
+    if (!button) return;
+    e.preventDefault();
+    pressRaceButton(button);
+    return;
+  }
+
   e.preventDefault();
 
   // Screens drawn by hud.js have no hit-region table; a tap anywhere continues.
@@ -6398,6 +6521,29 @@ function activateSlotRow(index) {
   }
 
   startCareer(row.slot, row.summary.empty ? null : store.read(row.slot));
+}
+
+function pressRaceButton(id) {
+  const race = app.race;
+  switch (id) {
+    case 'pit':
+      race.pitRepairRequested = !race.pitRepairRequested;
+      break;
+    case 'gears':
+      race.player.manualGears = !race.player.manualGears;
+      app.career.settings.manualGears = race.player.manualGears;
+      break;
+    case 'mute': {
+      const muted = audio.toggleMute();
+      app.career.settings.muted = muted;
+      autosave();
+      break;
+    }
+    case 'menu':
+      app.sel = 0;
+      app.screen = SCREEN.SHOP;
+      break;
+  }
 }
 
 function shopKey(code) {
@@ -6570,6 +6716,12 @@ function renderRace(ctx, alpha) {
   })));
 
   drawHud(ctx, canvas, car, race.hudState());
+  drawRaceButtons(ctx, canvas, {
+    pitRepairs: race.pitRepairRequested,
+    manualGears: car.manualGears,
+    muted: audio.muted,
+  });
+  input.exclusionZones = buttonZones();
   if (race.phase === PHASE.COUNTDOWN) drawCountdown(ctx, canvas, race.countdown);
 }
 
@@ -6590,6 +6742,7 @@ function wrap(z, L) { return ((z % L) + L) % L; }
 // Read-only as far as the game is concerned: nothing here is called by the loop.
 window.velocity3000 = app;
 window.velocity3000.hitRegions = debugHitRegions;
+window.velocity3000.raceButtons = buttonZones;
 
 startLoop(update, render);
 
