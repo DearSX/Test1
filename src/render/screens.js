@@ -13,6 +13,30 @@ import { TUNE } from '../tune.js';
 
 const FONT = 'ui-monospace, Menlo, Consolas, monospace';
 
+// Tap targets, rebuilt every frame by whichever screen is drawing.
+//
+// The screens compute their own row geometry, so they are the only thing that
+// knows where a row ended up. Recording it here — rather than main.js trying to
+// recompute the layout — is what keeps a tap landing on the row you can see.
+let hitRegions = [];
+
+function beginHits() { hitRegions = []; }
+function addHit(x, y, w, h, action) { hitRegions.push({ x, y, w, h, action }); }
+
+// Returns the action at a point, or null. Later regions win, so a full-screen
+// fallback can be registered first and a row on top of it second.
+// Dev aid: the live tap targets, for checking that what you can see is what you
+// can hit. Used by the touch test.
+export function debugHitRegions() { return hitRegions.map(r => ({ ...r })); }
+
+export function hitTest(px, py) {
+  for (let i = hitRegions.length - 1; i >= 0; i--) {
+    const r = hitRegions[i];
+    if (px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h) return r.action;
+  }
+  return null;
+}
+
 // Section 7. Arcade is not a lesser game — same track, same physics.
 const DIFFICULTY_NOTES = {
   arcade: 'No fuel, no damage, slower rivals, softer corners',
@@ -20,12 +44,28 @@ const DIFFICULTY_NOTES = {
   simulation: 'Faster rivals, damage carries between races',
 };
 
+// Reserved for the header and footer, in row heights.
+const PANEL_CHROME_ROWS = 4;
+// A comfortable finger target. Rows sized purely from the font came out 19px
+// tall on a phone, which is far too small to hit reliably — the menus were
+// unusable by touch even once tapping was wired up.
+const MIN_TOUCH_ROW = 38;
+
 function panel(ctx, canvas, { rows = 12, widthFrac = 0.92 } = {}) {
   const W = canvas.width, H = canvas.height;
   const unit = Math.min(W, H);
-  const s = Math.round(unit * (H > W ? 0.03 : 0.026));
-  const lineH = s * 1.6;
-  const boxH = Math.min(H * 0.94, lineH * (rows + 4));
+  const portrait = H > W;
+  let s = Math.round(unit * (portrait ? 0.03 : 0.026));
+
+  // Rows are as tall as a finger needs, then shrunk only as far as fitting the
+  // screen demands — so a long list stays on screen and a short one stays chunky.
+  const maxBoxH = H * 0.94;
+  const total = rows + PANEL_CHROME_ROWS;
+  let lineH = Math.max(s * 1.6, MIN_TOUCH_ROW);
+  if (lineH * total > maxBoxH) lineH = maxBoxH / total;
+  s = Math.min(s, Math.round(lineH * 0.58));
+
+  const boxH = lineH * total;
   const boxW = Math.min(W * widthFrac, unit * 1.75);
   const x0 = (W - boxW) / 2, y0 = (H - boxH) / 2;
 
@@ -70,6 +110,21 @@ function footer(ctx, p, text) {
 function noteX(ctx, p, label, minColumns) {
   const labelWidth = ctx.measureText(`  ${label}`).width;
   return p.x0 + p.pad + Math.max(p.s * minColumns, labelWidth + p.s * 1.2);
+}
+
+// Draws a row's note in whatever space is left before the value column,
+// truncating it rather than running through it. On a portrait phone there is
+// simply not room for label + note + value + cost on one line, and drawing all
+// four unconditionally left the garage unreadable — notes printed straight
+// across the prices.
+function drawNote(ctx, text, x, y, maxWidth) {
+  if (!text || maxWidth < ctx.measureText('mmmm').width) return;
+  let out = text;
+  if (ctx.measureText(out).width > maxWidth) {
+    while (out.length > 1 && ctx.measureText(out + '…').width > maxWidth) out = out.slice(0, -1);
+    out = out.trimEnd() + '…';
+  }
+  ctx.fillText(out, x, y);
 }
 
 // Level pips, so an upgrade's state reads at a glance.
@@ -162,6 +217,12 @@ export function shopRows(career) {
     affordable: true,
   });
 
+  rows.push({
+    kind: 'standings', label: 'Championship table',
+    note: 'see where you are in the season',
+    value: '', cost: null, affordable: true,
+  });
+
   rows.push({ kind: 'export', label: 'Export save file', note: 'download this career as .json', value: '', cost: null, affordable: true });
   rows.push({ kind: 'race', label: 'GO RACING', note: career.track.blurb, value: '', cost: null, affordable: true });
   return rows;
@@ -170,6 +231,7 @@ export function shopRows(career) {
 export function drawShop(ctx, canvas, career, selected) {
   const rows = shopRows(career);
   const p = panel(ctx, canvas, { rows: rows.length + 1 });
+  beginHits();
 
   header(ctx, p,
     `GARAGE — ${career.division.name.toUpperCase()} ROUND ${career.seasonRace + 1}/${career.racesPerSeason}`,
@@ -181,6 +243,8 @@ export function drawShop(ctx, canvas, career, selected) {
   for (let i = 0; i < rows.length; i++) {
     const r = rows[i];
     const on = i === selected;
+
+    addHit(p.x0, y - p.lineH * 0.78, p.boxW, p.lineH, { screen: 'shop', row: i });
 
     if (on) {
       ctx.fillStyle = 'rgba(125,249,255,0.13)';
@@ -196,24 +260,34 @@ export function drawShop(ctx, canvas, career, selected) {
     ctx.fillStyle = on ? '#ffb020' : dim;
     ctx.fillText(`${on ? '>' : ' '} ${r.label}`, p.x0 + p.pad, y);
 
-    ctx.fillStyle = on ? 'rgba(255,176,32,0.7)' : 'rgba(230,240,255,0.35)';
-    const nx = noteX(ctx, p, r.label, 11);
-    ctx.font = `700 ${Math.round(p.s * 0.78)}px ${FONT}`;
-    ctx.fillText(r.note, nx, y);
-    ctx.font = `700 ${p.s}px ${FONT}`;
+    // Right-hand columns first, so the note knows how much room is actually left.
+    const right = p.x0 + p.boxW - p.pad;
+    const costText = r.cost !== null ? `$${r.cost.toLocaleString()}`
+      : r.locked ? 'LOCKED'
+        : r.kind === 'upgrade' ? 'MAX' : null;
 
     ctx.textAlign = 'right';
     ctx.fillStyle = on ? '#ffb020' : dim;
-    if (r.value) ctx.fillText(r.value, p.x0 + p.boxW - p.pad - p.s * 5.5, y);
-    if (r.cost !== null) ctx.fillText(`$${r.cost.toLocaleString()}`, p.x0 + p.boxW - p.pad, y);
-    else if (r.locked) ctx.fillText('LOCKED', p.x0 + p.boxW - p.pad, y);
-    else if (r.kind === 'upgrade') ctx.fillText('MAX', p.x0 + p.boxW - p.pad, y);
+    if (costText) ctx.fillText(costText, right, y);
+
+    // A row with no price gets the full right edge for its value, instead of
+    // leaving an empty price column and shoving the value into the note.
+    const costWidth = costText ? ctx.measureText(costText).width + p.s * 0.8 : 0;
+    const valueRight = right - costWidth;
+    if (r.value) ctx.fillText(r.value, valueRight, y);
+    const valueWidth = r.value ? ctx.measureText(r.value).width : 0;
+
+    ctx.textAlign = 'left';
+    ctx.fillStyle = on ? 'rgba(255,176,32,0.7)' : 'rgba(230,240,255,0.35)';
+    const nx = noteX(ctx, p, r.label, 11);
+    ctx.font = `700 ${Math.round(p.s * 0.78)}px ${FONT}`;
+    drawNote(ctx, r.note, nx, y, valueRight - valueWidth - nx - p.s * 0.6);
+    ctx.font = `700 ${p.s}px ${FONT}`;
 
     y += p.lineH;
   }
 
-  footer(ctx, p,
-    `${career.track.name} · up/down select · enter buy · S standings · R race · ESC slots`);
+  footer(ctx, p, `${career.track.name} · tap a row, or up/down + enter`);
 }
 
 // ---------------------------------------------------------------------------
@@ -221,6 +295,8 @@ export function drawShop(ctx, canvas, career, selected) {
 // ---------------------------------------------------------------------------
 
 export function drawStandings(ctx, canvas, career) {
+  beginHits();
+  addHit(0, 0, canvas.width, canvas.height, { screen: 'standings', row: 0 });
   const table = career.table();
   const shown = table.slice(0, 14);
   const me = table.find(r => r.isPlayer);
@@ -253,7 +329,7 @@ export function drawStandings(ctx, canvas, career) {
     y += p.lineH;
   }
 
-  footer(ctx, p, `top ${TUNE.PROMOTION_PLACES} are promoted · any key to go back`);
+  footer(ctx, p, `top ${TUNE.PROMOTION_PLACES} are promoted · tap to go back`);
 }
 
 // ---------------------------------------------------------------------------
@@ -261,6 +337,8 @@ export function drawStandings(ctx, canvas, career) {
 // ---------------------------------------------------------------------------
 
 export function drawPreRace(ctx, canvas, career) {
+  beginHits();
+  addHit(0, 0, canvas.width, canvas.height, { screen: 'prerace', row: 0 });
   const p = panel(ctx, canvas, { rows: 9 });
   const t = career.track;
   header(ctx, p, t.name.toUpperCase(), `${career.division.laps} LAPS`);
@@ -294,7 +372,7 @@ export function drawPreRace(ctx, canvas, career) {
     ctx.fillText(`NEMESIS  ${nem.name} — ${nem.points} pts`, p.x0 + p.pad, y);
   }
 
-  footer(ctx, p, 'press enter to take the grid');
+  footer(ctx, p, 'tap to take the grid');
 }
 
 // ---------------------------------------------------------------------------
@@ -302,6 +380,8 @@ export function drawPreRace(ctx, canvas, career) {
 // ---------------------------------------------------------------------------
 
 export function drawRaceReport(ctx, canvas, report, career) {
+  beginHits();
+  addHit(0, 0, canvas.width, canvas.height, { screen: 'report', row: 0 });
   const p = panel(ctx, canvas, { rows: 9 });
   header(ctx, p, `${report.trackName.toUpperCase()} — RESULT`, `$${report.moneyAfter.toLocaleString()}`);
 
@@ -334,10 +414,12 @@ export function drawRaceReport(ctx, canvas, report, career) {
     ctx.fillText('repairs cost more than you won', p.x0 + p.pad, y);
   }
 
-  footer(ctx, p, 'press enter for the garage');
+  footer(ctx, p, 'tap for the garage');
 }
 
 export function drawSeasonEnd(ctx, canvas, outcome) {
+  beginHits();
+  addHit(0, 0, canvas.width, canvas.height, { screen: 'season', row: 0 });
   const p = panel(ctx, canvas, { rows: 7 });
   header(ctx, p, 'SEASON OVER', outcome.division.toUpperCase());
 
@@ -361,7 +443,7 @@ export function drawSeasonEnd(ctx, canvas, outcome) {
       ? 'CHAMPION — nowhere left to be promoted to'
       : `stayed in ${outcome.division} — top ${TUNE.PROMOTION_PLACES} go up`, W / 2, y);
 
-  footer(ctx, p, 'press enter to start the next season');
+  footer(ctx, p, 'tap to start the next season');
 }
 
 // ---------------------------------------------------------------------------
@@ -384,6 +466,7 @@ export function slotRows(summaries) {
 export function drawSlots(ctx, canvas, summaries, selected, { message = null, persistent = true } = {}) {
   const rows = slotRows(summaries);
   const p = panel(ctx, canvas, { rows: rows.length + 3 });
+  beginHits();
   header(ctx, p, 'VELOCITY 3000', 'SELECT A CAREER');
 
   let y = p.y0 + p.lineH * 3;
@@ -392,6 +475,7 @@ export function drawSlots(ctx, canvas, summaries, selected, { message = null, pe
   for (let i = 0; i < rows.length; i++) {
     const r = rows[i];
     const on = i === selected;
+    addHit(p.x0, y - p.lineH * 0.78, p.boxW, p.lineH, { screen: 'slots', row: i });
     if (on) {
       ctx.fillStyle = 'rgba(125,249,255,0.13)';
       ctx.fillRect(p.x0 + p.pad * 0.4, y - p.lineH * 0.72, p.boxW - p.pad * 0.8, p.lineH);
@@ -402,7 +486,8 @@ export function drawSlots(ctx, canvas, summaries, selected, { message = null, pe
     ctx.fillStyle = on ? 'rgba(255,176,32,0.75)' : 'rgba(230,240,255,0.4)';
     const nx = noteX(ctx, p, r.label, 7);
     ctx.font = `700 ${Math.round(p.s * 0.8)}px ${FONT}`;
-    ctx.fillText(r.note, nx, y);
+    const valueLeft = p.x0 + p.boxW - p.pad - (r.value ? p.s * 6 : 0);
+    drawNote(ctx, r.note, nx, y, valueLeft - nx - p.s * 0.5);
     ctx.font = `700 ${p.s}px ${FONT}`;
     if (r.value) {
       ctx.textAlign = 'right';
@@ -428,7 +513,7 @@ export function drawSlots(ctx, canvas, summaries, selected, { message = null, pe
       p.x0 + p.boxW / 2, p.y0 + p.boxH - p.lineH * 1.5);
   }
 
-  footer(ctx, p, 'up/down select · enter load or start · D delete slot');
+  footer(ctx, p, 'tap a slot to play it · or up/down + enter');
 }
 
 function divisionName(id) {

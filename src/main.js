@@ -12,7 +12,7 @@ import { drawPlayer, drawCars } from './render/cars.js';
 import { drawHud, drawCountdown, drawResults } from './render/hud.js';
 import {
   drawShop, drawStandings, drawPreRace, drawRaceReport, drawSeasonEnd, drawSlots,
-  shopRows, slotRows,
+  shopRows, slotRows, hitTest, debugHitRegions,
 } from './render/screens.js';
 import { SaveStore, downloadSave, pickSaveFile } from './core/storage.js';
 import { Audio } from './core/audio.js';
@@ -89,6 +89,34 @@ function firstGesture() {
 window.addEventListener('keydown', firstGesture);
 window.addEventListener('pointerdown', firstGesture);
 window.addEventListener('touchstart', firstGesture);
+
+// Touch/click on the menu screens. Without this the whole game is unreachable on
+// a phone: the driving controls were wired for touch but every screen — slots,
+// garage, results — was keydown-only, so a phone could not get past the first
+// screen at all.
+canvas.addEventListener('pointerdown', e => {
+  if (app.screen === SCREEN.RACE) return;      // driving owns touch during a race
+  const rect = canvas.getBoundingClientRect();
+  const x = (e.clientX - rect.left) * (canvas.width / rect.width);
+  const y = (e.clientY - rect.top) * (canvas.height / rect.height);
+  e.preventDefault();
+
+  // Screens drawn by hud.js have no hit-region table; a tap anywhere continues.
+  if (app.screen === SCREEN.RESULTS) { finishRace(); return; }
+
+  const action = hitTest(x, y);
+  if (!action) return;
+
+  switch (action.screen) {
+    case 'slots': activateSlotRow(action.row); break;
+    case 'shop': activateShopRow(action.row); break;
+    case 'standings': app.screen = SCREEN.SHOP; break;
+    case 'prerace': startRace(); break;
+    case 'results': finishRace(); break;
+    case 'report': leaveReport(); break;
+    case 'season': app.sel = 0; app.screen = SCREEN.SHOP; break;
+  }
+});
 
 function resize() {
   renderer.resize(window.innerWidth, window.innerHeight);
@@ -195,6 +223,14 @@ function slotsKey(code) {
     return;
   }
   if (code !== 'Enter' && code !== 'Space') return;
+  activateSlotRow(app.sel);
+}
+
+function activateSlotRow(index) {
+  const rows = slotRows(store.summaries());
+  app.sel = index;
+  const row = rows[index];
+  if (!row) return;
 
   if (row.kind === 'import') {
     pickSaveFile().then(text => {
@@ -221,8 +257,16 @@ function shopKey(code) {
   if (code === 'KeyR') { app.screen = SCREEN.PRERACE; return; }
   if (code === 'Escape') { app.sel = app.slot ?? 0; app.screen = SCREEN.SLOTS; return; }
   if (code !== 'Enter' && code !== 'Space') return;
+  activateShopRow(app.sel);
+}
 
-  const row = rows[app.sel];
+// One place where a shop row is acted on, so tapping a row and pressing Enter on
+// it can never diverge.
+function activateShopRow(index) {
+  const rows = shopRows(app.career);
+  app.sel = index;
+  const row = rows[index];
+  if (!row) return;
   const g = app.career.garage;
 
   switch (row.kind) {
@@ -269,6 +313,9 @@ function shopKey(code) {
       app.career.difficulty = keys[(keys.indexOf(app.career.difficulty) + 1) % keys.length];
       break;
     }
+    case 'standings':
+      app.screen = SCREEN.STANDINGS;
+      break;
     case 'export':
       downloadSave(app.career.toSave(),
         `velocity3000-${app.career.driverName.toLowerCase()}-slot${app.slot + 1}.json`);
@@ -334,7 +381,8 @@ function render(alpha) {
     case SCREEN.STANDINGS: drawStandings(ctx, canvas, app.career); break;
     case SCREEN.PRERACE: drawPreRace(ctx, canvas, app.career); break;
     case SCREEN.RESULTS: drawResults(ctx, canvas, app.race.results(), {
-      title: 'RACE RESULT', footer: 'press enter to collect your winnings',
+      title: 'RACE RESULT',
+      footer: 'tap to collect your winnings',
     }); break;
     case SCREEN.REPORT: drawRaceReport(ctx, canvas, app.report, app.career); break;
     case SCREEN.SEASON: drawSeasonEnd(ctx, canvas, app.seasonOutcome); break;
@@ -390,5 +438,6 @@ function wrap(z, L) { return ((z % L) + L) % L; }
 // to look at a situation that would otherwise take a lap and a half to reach.
 // Read-only as far as the game is concerned: nothing here is called by the loop.
 window.velocity3000 = app;
+window.velocity3000.hitRegions = debugHitRegions;
 
 startLoop(update, render);

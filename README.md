@@ -45,6 +45,8 @@ On a phone: drag the left half of the screen to steer, hold the lower right for 
 
 **Garage:** `↑` `↓` select · `Enter` buy · `S` standings · `R` go racing · `Esc` back to save slots.
 
+**On a phone, every screen is tappable** — tap a row to choose it, tap anywhere to continue on the results and pre-race screens. Rows are sized to a finger (38px minimum) and shrink only as far as fitting the screen requires.
+
 **Save slots:** `↑` `↓` select · `Enter` load or start a career · `D` delete. The game autosaves after every race, every purchase and every season transition, and reopening the tab pre-selects the slot you were last playing. "Export save file" in the garage downloads the career as JSON; "Import save file" on the slot screen reads one back.
 
 `window.velocity3000` exposes the live game state in the browser console — handy for looking at a situation without driving to it.
