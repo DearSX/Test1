@@ -2,17 +2,29 @@
 
 Browser pseudo-3D racer. Vanilla JS, ES modules, Canvas 2D. No framework, no bundler, no npm dependencies.
 
-## Running it (read this first)
+## Running it
 
-**ES modules do not work over `file://`.** Opening `index.html` directly will show a blank page with a CORS error in the console. Serve it:
+**The easy way: open `velocity3000.html`.** It's the whole game in one self-contained file — no server, no install, no build step. Download it and double-click it.
+
+**The development way:** `index.html` loads the real ES modules from `src/`, which is what you want while editing, but **ES modules do not work over `file://`** — opening it directly gives a blank page and a CORS error. Serve it:
 
 ```
-npx serve
+python3 -m http.server 8000     # then open http://localhost:8000
 # or
-python -m http.server
+npx serve
 ```
 
-then open `http://localhost:3000` (serve) or `http://localhost:8000` (python).
+### Rebuilding the single file
+
+`velocity3000.html` is generated. After changing anything in `src/`, regenerate it or it goes stale:
+
+```
+node tools/build-single-file.mjs
+```
+
+That bundles the module graph into one classic `<script>`. Each module keeps its own scope — a naive concatenation collides immediately, since five modules define `clamp`, three define a module-level `ctx`, and two each define `roundRect` and `cache`. The bundler only understands the import/export forms this codebase uses and throws rather than emitting something subtly broken.
+
+Verified in Chromium from `file://`: racing, the ported art, audio, and saves surviving a reload. Note that Safari is stricter about `localStorage` on `file://` origins — if saves don't stick there, serve it instead.
 
 ## Status
 
