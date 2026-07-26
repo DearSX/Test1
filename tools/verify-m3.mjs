@@ -186,7 +186,7 @@ function garageWith(overrides) {
   const c = new Career({ seed: 1 });
   const moneyBefore = c.money;
   const fakeResults = fabricateResults(4);
-  const wrecked = { damage: 0.85, nitroCharges: 1, tyreWear: 0.5 };   // properly wrecked
+  const wrecked = { damage: 0.95, nitroCharges: 1, tyreWear: 0.5 };   // properly wrecked
   const rep = c.settleRace(fakeResults, wrecked);
 
   check('finishing 4th with a wrecked car leaves you poorer',

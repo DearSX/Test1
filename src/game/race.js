@@ -176,7 +176,6 @@ export class Race {
   // you sit there and the field does not.
   updatePitStops(dt) {
     const L = this.track.trackLength;
-    const boxZ = this.track.pit.boxZ;
 
     for (const e of this.entries) {
       if (e.finished) continue;
@@ -201,6 +200,7 @@ export class Race {
       if (e.pitState === 'lane') {
         // Did this step carry the car across the pit box? Allow for the lap wrap:
         // the box sits just after the start line.
+        const boxZ = this.track.pit.boxFor(e.gridSlot - 1);
         let pz = e.prevZ;
         if (car.trackPos < pz) pz -= L;
         if (pz < boxZ && car.trackPos >= boxZ) {
@@ -330,12 +330,12 @@ export class Race {
 
           if (xEscape <= zEscape) {
             // Side by side already — nudge them apart across the road.
-            const push = (TUNE.CAR_WIDTH - Math.abs(dx)) * 0.5 + 1e-4;
+            const push = (TUNE.CAR_WIDTH * TUNE.SEPARATION_MARGIN - Math.abs(dx)) * 0.5;
             const dir = dx === 0 ? (i % 2 ? 1 : -1) : Math.sign(dx);
             a.x = clampX(a.x + dir * push);
             b.x = clampX(b.x - dir * push);
           } else {
-            const push = zEscape * 0.5 + 1e-4;
+            const push = (TUNE.CAR_LEN * TUNE.SEPARATION_MARGIN - Math.abs(dz)) * 0.5;
             const dir = dz === 0 ? (i % 2 ? 1 : -1) : Math.sign(dz);
             a.trackPos = wrapPos(a.trackPos + dir * push, L);
             b.trackPos = wrapPos(b.trackPos - dir * push, L);

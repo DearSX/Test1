@@ -22,11 +22,11 @@ then open `http://localhost:3000` (serve) or `http://localhost:8000` (python).
 - **M3 — Career: DONE.** 8-race seasons, championship points, prize money, 4 divisions with promotion, a 6-category upgrade shop wired into physics, standings, and 4 tracks. One tyre level is worth 0.85s a lap.
 - **M4 — Strategy: DONE.** Fuel burned per distance (a tank does 2.5 of a 3-lap race), a working pit lane on the left of the start straight, tyre wear and compounds, repair bills, DNF on a dry tank, and a nemesis with a real pace boost.
 - **M5 — Persistence: DONE.** Three save slots, autosave on every race finish / purchase / season transition, JSON export and import, schema `version` with a migration table, and graceful behaviour when storage is blocked or a slot is corrupt.
-- M6 — Content & polish: **blocked.** Needs `top-flush-3-10.html` for the verbatim scenery and sprite port (see below).
+- **M6 — Content & polish: PARTIAL.** Done: the night track (Providence Night, with ice), a minimap, engine/tyre/crash audio with mute, Arcade/Career/Simulation selectable, and all five tracks reworked into closed circuits. **Blocked:** the verbatim scenery and sprite port needs `top-flush-3-10.html` (see below).
 
 ### Controls
 
-**Driving:** `↑` throttle · `↓` brake · `←` `→` steer · `Shift` nitro · `M` toggle manual gears (`Q`/`E` to shift) · `P` book repairs at your next pit stop.
+**Driving:** `↑` throttle · `↓` brake · `←` `→` steer · `Shift` nitro · `M` toggle manual gears (`Q`/`E` to shift) · `P` book repairs at your next pit stop · `K` mute.
 
 **Pitting:** the pit lane is the left verge of the start/finish straight. When fuel is low the HUD warns you before the entry — steer left across the road edge, slow to the limit, and you'll be held for about 4 seconds while the car is refuelled and re-shod (longer if you booked repairs).
 On a phone: drag the left half of the screen to steer, hold the lower right for throttle, below that for brake, upper right for nitro.
@@ -54,6 +54,7 @@ node tools/verify-m2.mjs     # rivals, swept collisions, honest positions
 node tools/verify-m3.mjs     # upgrades measurably changing physics, season economy
 node tools/verify-m4.mjs     # fuel range, pit stops, and losing a race to a bad pit call
 node tools/verify-m5.mjs     # save schema, slots, corrupt input, and a mid-season reload
+node tools/checklist.mjs     # the build plan's section 11 checklist
 ```
 
 Exit code is non-zero if any check fails. `tools/harness.mjs` holds the fake canvas and the assertion helpers.
@@ -79,7 +80,15 @@ Position across the road is a continuous `-1.0 … 1.0`, not a lane index. Nothi
 
 Per the build plan (`velocity-3000-build-plan.md`), milestones M0→M6. Files fill in at their milestone.
 
-## M6 is blocked
+## Tracks
+
+Five circuits: Island Loop, Providence Point, Dominican Ridge, Costa Rica Jungle and Providence Night. All five close in elevation, in curvature and on the minimap — see the note at the top of `src/render/minimap.js` for why a track's total curvature summing to one lap is necessary but not sufficient for a closed outline.
+
+## Audio
+
+Synthesised, no assets. Engine pitch tracks RPM, so an upshift is audible because the rev model resets rather than because a sound is triggered. `K` mutes. The `AudioContext` is only constructed inside `Audio.unlock()`, which is called from the first keydown/pointerdown/touchstart — nothing makes a noise before you touch it.
+
+## M6's scenery port is blocked
 
 M6 ports the scenery draw functions (`drawTriplex`, `drawBodega`, `drawColmado`, `drawRoyalPalm`, `drawJungleTree`, `drawSoda`, `drawPalmTree`), the Celica/Soul/Lucid car sprites, the paint + number-decal system, and the four theme palettes **verbatim** from `top-flush-3-10.html` into `src/render/themes/`. That file is not in this repo and was not supplied, so the port cannot start.
 

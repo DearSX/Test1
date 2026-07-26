@@ -58,9 +58,10 @@ export const MAX_LEVEL = 5;
 // Consumables, bought between races (section 5.3).
 export const CONSUMABLES = {
   nitro: { name: 'Nitro charge', cost: 800, max: 6 },
-  // Calibrated against the section 5.2 tension: a fully wrecked car must cost
-  // more than a 4th-place cheque ($4,000), so this cannot drop below ~40. At 50,
-  // a typical scrappy midfield race (~25% damage) bills $1,250 and still leaves
-  // something to upgrade with.
-  repair: { name: 'Full repair', costPerPercent: 50 },
+  // Calibrated against the section 5.2 tension: a badly wrecked car must cost
+  // more than a 4th-place cheque ($4,000), so this cannot drop much below 45. At
+  // 45, a wrecked car (95%) bills $4,275 while a typical scrappy race (~20%)
+  // bills $900 — payable out of a midfield finish, which is what keeps a
+  // struggling driver improving instead of stuck.
+  repair: { name: 'Full repair', costPerPercent: 45 },
 };

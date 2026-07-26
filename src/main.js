@@ -15,6 +15,9 @@ import {
   shopRows, slotRows,
 } from './render/screens.js';
 import { SaveStore, downloadSave, pickSaveFile } from './core/storage.js';
+import { Audio } from './core/audio.js';
+import { drawMinimap } from './render/minimap.js';
+import { DIFFICULTY } from './game/career.js';
 import { Effects } from './render/effects.js';
 import { Race, PHASE } from './game/race.js';
 import { Career } from './game/career.js';
@@ -33,6 +36,7 @@ const input = new Input();
 const effects = new Effects();
 
 const store = new SaveStore();
+const audio = new Audio();
 
 const app = {
   screen: SCREEN.SLOTS,
@@ -68,6 +72,20 @@ function startCareer(slot, save = null) {
 let prev = { trackPos: 0, x: 0 };
 
 input.attachTouch(canvas);
+
+// Audio must not exist before a user gesture (section 11). These listeners are
+// the only place it gets created, and they remove themselves once it has.
+function firstGesture() {
+  if (audio.unlock()) {
+    audio.setMuted(app.career ? app.career.settings.muted : false);
+    window.removeEventListener('keydown', firstGesture);
+    window.removeEventListener('pointerdown', firstGesture);
+    window.removeEventListener('touchstart', firstGesture);
+  }
+}
+window.addEventListener('keydown', firstGesture);
+window.addEventListener('pointerdown', firstGesture);
+window.addEventListener('touchstart', firstGesture);
 
 function resize() { renderer.resize(window.innerWidth, window.innerHeight); }
 window.addEventListener('resize', resize);
@@ -115,6 +133,14 @@ function leaveReport() {
 window.addEventListener('keydown', e => {
   const code = e.code;
   if (['ArrowUp', 'ArrowDown', 'Enter', 'Space'].includes(code)) e.preventDefault();
+
+  // Mute works on every screen, and is remembered with the career.
+  if (code === 'KeyK') {
+    const muted = audio.toggleMute();
+    if (app.career) { app.career.settings.muted = muted; autosave(); }
+    app.message = muted ? 'Audio muted (K).' : null;
+    return;
+  }
 
   switch (app.screen) {
     case SCREEN.SLOTS: return slotsKey(code);
@@ -208,6 +234,11 @@ function shopKey(code) {
       g.tyreCompound = keys[(keys.indexOf(g.tyreCompound) + 1) % keys.length];
       break;
     }
+    case 'difficulty': {
+      const keys = Object.keys(DIFFICULTY);
+      app.career.difficulty = keys[(keys.indexOf(app.career.difficulty) + 1) % keys.length];
+      break;
+    }
     case 'export':
       downloadSave(app.career.toSave(),
         `velocity3000-${app.career.driverName.toLowerCase()}-slot${app.slot + 1}.json`);
@@ -218,7 +249,7 @@ function shopKey(code) {
   }
 
   // Any purchase changes the career, so it gets written straight away.
-  if (['upgrade', 'repair', 'nitro', 'compound'].includes(row.kind)) autosave();
+  if (['upgrade', 'repair', 'nitro', 'compound', 'difficulty'].includes(row.kind)) autosave();
 }
 
 // ---------------------------------------------------------------------------
@@ -228,6 +259,7 @@ function shopKey(code) {
 function update(dt) {
   if (app.screen !== SCREEN.RACE) {
     input.sample(dt);   // keep edge detection honest across screens
+    audio.idle();
     return;
   }
 
@@ -235,8 +267,11 @@ function update(dt) {
   prev.trackPos = car.trackPos;
   prev.x = car.x;
 
+  const wasCrashed = car.crashed;
   app.race.update(dt, input.sample(dt));
   effects.update(dt, car, canvas);
+  audio.update(car, { racing: app.race.phase === PHASE.RACING });
+  if (car.crashed && !wasCrashed) audio.crash();
 
   if (app.race.playerEntry.finished && app.race.phase === PHASE.FINISHED) {
     app.screen = SCREEN.RESULTS;
@@ -291,6 +326,12 @@ function renderRace(ctx, alpha) {
   drawPlayer(ctx, canvas, car, input.state);
   effects.draw(ctx);
   effects.endShake(ctx, shaken);
+
+  drawMinimap(ctx, canvas, track, race.entries.map(e => ({
+    trackPos: e.car.trackPos,
+    isPlayer: e.isPlayer,
+    paint: e.identity.paint,
+  })));
 
   drawHud(ctx, canvas, car, race.hudState());
   if (race.phase === PHASE.COUNTDOWN) drawCountdown(ctx, canvas, race.countdown);

@@ -17,7 +17,7 @@ export function buildCostaRicaTrack() {
   // Under the canopy — permanently damp
   t.addStraight(LEN.SHORT, 'wet');
   t.addHairpin(CURVE.RIGHT, 'wet');
-  t.addCurve(LEN.MEDIUM, CURVE.MEDIUM_LEFT, HILL.NONE, 'wet');
+  t.addCurve(LEN.MEDIUM, CURVE.MEDIUM_RIGHT, HILL.NONE, 'wet');
   t.addDownhill(LEN.SHORT, HILL.LOW);
 
   // The only real straight, and the only real overtaking chance

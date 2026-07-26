@@ -12,6 +12,7 @@ export const TUNE = {
   ROAD_WIDTH: 2000,          // half-width in world units
   RUMBLE_LEN: 3,             // segments per rumble stripe
   FOG_DENSITY: 5,            // distance haze; also hides far segments popping over crests
+  MINIMAP_CURVE_SCALE: 0.0055,  // radians per curve-unit-per-segment on the minimap
 
   // ===========================================================================
   // THE SOUL DIAL
@@ -103,11 +104,13 @@ export const TUNE = {
   COLLIDE_SHOVE: 0.28,       // lateral shove apart
   // A racy 3-lap stint from the back takes ~30 contacts. 0.04 wrecked the car
   // outright, 0.02 pinned it at 100%, and 0.012 still billed more than a
-  // midfield prize every single race. At 0.008 a hard race runs ~25% damaged;
-  // getting properly wrecked now takes crashes, which cost 0.12 each.
-  COLLIDE_DAMAGE: 0.008,
+  // midfield prize every single race. At 0.006 a hard race runs ~20% damaged, so
+  // a midfield finish roughly covers its own repair bill instead of going
+  // backwards; getting properly wrecked takes crashes, at 0.12 each.
+  COLLIDE_DAMAGE: 0.006,
   CONTACT_COOLDOWN: 0.6,     // seconds before the same pair can trade paint again
   SEPARATION_ITERATIONS: 6,  // relaxation passes to untangle a pile-up
+  SEPARATION_MARGIN: 1.02,   // separate to slightly more than touching, not exactly
 
   // Rival AI
   // Rivals aim below the theoretical corner limit — an AI parked exactly on the
@@ -137,6 +140,10 @@ export const TUNE = {
 
   PIT_WINDOW_SEGMENTS: 90,     // pit lane runs alongside the start/finish straight
   PIT_BOX_SEGMENT: 45,
+  // Each car gets its own box down the lane. Sharing one box put two rivals in
+  // the same square metre of pit lane, and separation could only ever push them
+  // to exactly touching.
+  PIT_BOX_SPACING: 400,      // world units between boxes
   PIT_X_INNER: 1.0,            // pit lane occupies x in [-OUTER, -INNER]...
   PIT_X_OUTER: 1.5,            // ...so the left verge of the straight IS the lane
   PIT_SPEED_LIMIT: 0.22,       // × maxSpeed, enforced in the lane
@@ -151,7 +158,10 @@ export const TUNE = {
   TYRE_WEAR_SCRUB: 1.6,        // × extra wear when the tyres are working hard
 
   // --- career (M3) ---
-  STARTING_MONEY: 5000,
+  // Enough for one good upgrade or two cheap ones before the first race. At
+  // 5,000 a whole Rookie season bought only two levels, which reads as stuck
+  // rather than as pressure.
+  STARTING_MONEY: 7500,
   RACES_PER_SEASON: 8,
   PROMOTION_PLACES: 3,       // top 3 in the championship are promoted
   NEMESIS_PACE_BOOST: 1.03,  // the rival nearest you on points tries harder

@@ -192,24 +192,27 @@ check('the winner is the car with the shortest finish time',
   for (const skill of [0.8, 0.9, 1.0]) {
     const runs = [21, 22, 23, 24].map(seed => {
       const me = runRace({ seed, skill }).race.results().find(r => r.isPlayer);
-      return { pos: me.position, time: me.finishTime, best: me.bestLap };
+      return { pos: me.position, time: me.finishTime, best: me.bestLap, dnf: !!me.dnf };
     });
     outcomes.push({
       skill,
       pos: avg(runs.map(r => r.pos)),
       time: avg(runs.map(r => r.time)),
       best: avg(runs.map(r => r.best)),
+      dnfs: runs.filter(r => r.dnf).length,
       places: runs.map(r => r.pos),
     });
   }
   const posMonotonic = outcomes[0].pos > outcomes[1].pos && outcomes[1].pos > outcomes[2].pos;
-  const timeMonotonic = outcomes[0].time > outcomes[1].time && outcomes[1].time > outcomes[2].time;
+  // Best lap rather than finish time: a driver who retires has a finish time of
+  // Infinity, which poisons the average and says nothing about how they drove.
+  const lapMonotonic = outcomes[0].best > outcomes[1].best && outcomes[1].best > outcomes[2].best;
   const detail = outcomes.map(o =>
-    `skill ${o.skill}: avg ${o.pos.toFixed(1)}th (${o.places.join(',')}), ${o.time.toFixed(0)}s, best lap ${(o.best / 1000).toFixed(1)}s`).join(' | ');
+    `skill ${o.skill}: avg ${o.pos.toFixed(1)}th (${o.places.join(',')}), best lap ${(o.best / 1000).toFixed(1)}s${o.dnfs ? `, ${o.dnfs} DNF` : ''}`).join(' | ');
 
   check('POSITIONS ARE HONEST: driving better finishes higher', posMonotonic, detail);
-  check('...and finishes sooner, so the result is not just luck of the draw',
-    timeMonotonic, detail);
+  check('...and laps quicker, so the result tracks driving and not luck',
+    lapMonotonic, detail);
 }
 
 // Crashing must cost real places, not just time on a clock.

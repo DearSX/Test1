@@ -1,4 +1,4 @@
-// The calendar. One track per theme; the night variant joins at M6.
+// The calendar. One per theme, plus the night variant.
 //
 // Tracks are built on demand and cached — a build walks 2,000+ segments and
 // there's no reason to redo it every time the season rolls over.
@@ -7,6 +7,7 @@ import { buildIslandTrack } from './island.js';
 import { buildProvidenceTrack } from './providence.js';
 import { buildDominicanTrack } from './dominican.js';
 import { buildCostaRicaTrack } from './costarica.js';
+import { buildNightTrack } from './night.js';
 
 export const TRACKS = [
   { id: 'island', name: 'Island Loop', theme: 'island', build: buildIslandTrack,
@@ -17,6 +18,8 @@ export const TRACKS = [
     blurb: 'Dirt at the top of the mountain.' },
   { id: 'costarica', name: 'Costa Rica Jungle', theme: 'costarica', build: buildCostaRicaTrack,
     blurb: 'Wet, tight, unforgiving. Learn it.' },
+  { id: 'night', name: 'Providence Night', theme: 'providence', night: true, build: buildNightTrack,
+    blurb: 'The damp section has frozen over.' },
 ];
 
 const cache = new Map();

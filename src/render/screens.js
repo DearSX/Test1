@@ -12,6 +12,13 @@ import { TUNE } from '../tune.js';
 
 const FONT = 'ui-monospace, Menlo, Consolas, monospace';
 
+// Section 7. Arcade is not a lesser game — same track, same physics.
+const DIFFICULTY_NOTES = {
+  arcade: 'No fuel, no damage, slower rivals, softer corners',
+  career: 'The game as designed',
+  simulation: 'Faster rivals, damage carries between races',
+};
+
 function panel(ctx, canvas, { rows = 12, widthFrac = 0.92 } = {}) {
   const W = canvas.width, H = canvas.height;
   const unit = Math.min(W, H);
@@ -118,6 +125,15 @@ export function shopRows(career) {
     label: 'Tyre compound',
     note: 'Soft grips more and wears faster',
     value: TYRE_COMPOUNDS[g.tyreCompound].name.toUpperCase(),
+    cost: null,
+    affordable: true,
+  });
+
+  rows.push({
+    kind: 'difficulty',
+    label: 'Difficulty',
+    note: DIFFICULTY_NOTES[career.difficulty] ?? '',
+    value: career.difficulty.toUpperCase(),
     cost: null,
     affordable: true,
   });

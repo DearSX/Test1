@@ -11,7 +11,7 @@ export function buildDominicanTrack() {
 
   // The climb
   t.addCurve(LEN.MEDIUM, CURVE.MEDIUM_RIGHT, HILL.HIGH);
-  t.addCurve(LEN.SHORT, CURVE.HARD_LEFT, HILL.LOW);
+  t.addCurve(LEN.SHORT, CURVE.HARD_RIGHT, HILL.LOW);
 
   // Dirt sector at the top of the ridge — grip 0.65, and it bites
   t.addStraight(LEN.SHORT, 'dirt');
@@ -27,7 +27,7 @@ export function buildDominicanTrack() {
   t.addCurve(LEN.MEDIUM, CURVE.HARD_RIGHT, HILL.NONE);
   t.addDownhill(LEN.SHORT, HILL.LOW);
   t.addStraight(LEN.MEDIUM);
-  t.addCurve(LEN.MEDIUM, CURVE.EASY_LEFT, HILL.NONE);
+  t.addCurve(LEN.MEDIUM, CURVE.EASY_RIGHT, HILL.NONE);
 
   return t.build();
 }

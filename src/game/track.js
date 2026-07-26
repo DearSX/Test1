@@ -131,6 +131,9 @@ export class Track {
       entryZ: 0,
       exitZ: TUNE.PIT_WINDOW_SEGMENTS * this.segmentLength,
       boxZ: TUNE.PIT_BOX_SEGMENT * this.segmentLength,
+      // Box for a given grid slot, so no two cars stop in the same place.
+      boxFor: (slot) => TUNE.PIT_BOX_SEGMENT * this.segmentLength
+        + Math.min(slot, TUNE.FIELD_SIZE) * TUNE.PIT_BOX_SPACING,
       xInner: -TUNE.PIT_X_INNER,
       xOuter: -TUNE.PIT_X_OUTER,
     };
