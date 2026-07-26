@@ -8,6 +8,7 @@ import { formatTime } from './hud.js';
 import { UPGRADES } from '../data/upgrades.js';
 import { DIVISIONS } from '../data/season.js';
 import { TYRE_COMPOUNDS } from '../game/garage.js';
+import { CARS, PAINT_OPTIONS, NUMBER_OPTIONS } from './themes/sprites.js';
 import { TUNE } from '../tune.js';
 
 const FONT = 'ui-monospace, Menlo, Consolas, monospace';
@@ -127,6 +128,29 @@ export function shopRows(career) {
     value: TYRE_COMPOUNDS[g.tyreCompound].name.toUpperCase(),
     cost: null,
     affordable: true,
+  });
+
+  // The ported car sprites, paint booth and number decals.
+  rows.push({
+    kind: 'model',
+    label: 'Car',
+    note: 'GT-S Coupe, Kia Soul or Lucid Air',
+    value: (CARS.find(c => c.id === g.model) ?? CARS[0]).name.toUpperCase(),
+    cost: null, affordable: true,
+  });
+  rows.push({
+    kind: 'paint',
+    label: 'Paint',
+    note: 'Custom paint, or the car\'s stock colours',
+    value: g.paint ? (PAINT_OPTIONS.find(p2 => p2.hex === g.paint)?.name ?? g.paint).toUpperCase() : 'STOCK',
+    cost: null, affordable: true,
+  });
+  rows.push({
+    kind: 'number',
+    label: 'Race number',
+    note: 'Roundel on the rear deck',
+    value: g.number ? String(g.number) : 'NONE',
+    cost: null, affordable: true,
   });
 
   rows.push({

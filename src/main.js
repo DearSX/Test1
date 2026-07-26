@@ -17,11 +17,13 @@ import {
 import { SaveStore, downloadSave, pickSaveFile } from './core/storage.js';
 import { Audio } from './core/audio.js';
 import { drawMinimap } from './render/minimap.js';
+import { themeFor, placeScenery, drawScenery, buildBackdrop } from './render/themes/index.js';
 import { DIFFICULTY } from './game/career.js';
 import { Effects } from './render/effects.js';
 import { Race, PHASE } from './game/race.js';
 import { Career } from './game/career.js';
 import { TYRE_COMPOUNDS } from './game/garage.js';
+import { CARS, PAINT_OPTIONS, NUMBER_OPTIONS } from './render/themes/sprites.js';
 import { getTrack } from './data/tracks/index.js';
 
 const SCREEN = {
@@ -44,6 +46,7 @@ const app = {
   slot: null,
   race: null,
   track: null,
+  theme: null,
   sel: 0,
   report: null,
   seasonOutcome: null,
@@ -87,7 +90,12 @@ window.addEventListener('keydown', firstGesture);
 window.addEventListener('pointerdown', firstGesture);
 window.addEventListener('touchstart', firstGesture);
 
-function resize() { renderer.resize(window.innerWidth, window.innerHeight); }
+function resize() {
+  renderer.resize(window.innerWidth, window.innerHeight);
+  // The ported backdrop's hills, clouds and skyline are laid out in canvas
+  // space, so they are rebuilt whenever that changes.
+  buildBackdrop(window.innerWidth, window.innerHeight);
+}
 window.addEventListener('resize', resize);
 window.addEventListener('orientationchange', resize);
 resize();
@@ -99,6 +107,10 @@ resize();
 function startRace() {
   const cfg = app.career.raceConfig();
   app.track = getTrack(cfg.track.id);
+  // Ported palette + backdrop for this circuit, and its roadside objects.
+  app.theme = themeFor(cfg.track);
+  renderer.setTheme(app.theme);
+  placeScenery(app.track, cfg.track);
   app.race = new Race(app.track, cfg);
   app.race.player.nitroCharges = app.career.garage.nitroCharges;
   app.race.player.damage = app.career.garage.damage;
@@ -234,6 +246,24 @@ function shopKey(code) {
       g.tyreCompound = keys[(keys.indexOf(g.tyreCompound) + 1) % keys.length];
       break;
     }
+    case 'model': {
+      const i = CARS.findIndex(c => c.id === g.model);
+      g.model = CARS[(i + 1 + CARS.length) % CARS.length].id;
+      break;
+    }
+    case 'paint': {
+      // null is "stock paint", which is a real choice in the ported system.
+      const hexes = [null, ...PAINT_OPTIONS.map(p2 => p2.hex)];
+      const i = hexes.indexOf(g.paint);
+      g.paint = hexes[(i + 1 + hexes.length) % hexes.length];
+      break;
+    }
+    case 'number': {
+      const nums = [null, ...NUMBER_OPTIONS];
+      const i = nums.indexOf(g.number === null ? null : String(g.number));
+      g.number = nums[(i + 1 + nums.length) % nums.length];
+      break;
+    }
     case 'difficulty': {
       const keys = Object.keys(DIFFICULTY);
       app.career.difficulty = keys[(keys.indexOf(app.career.difficulty) + 1) % keys.length];
@@ -249,7 +279,8 @@ function shopKey(code) {
   }
 
   // Any purchase changes the career, so it gets written straight away.
-  if (['upgrade', 'repair', 'nitro', 'compound', 'difficulty'].includes(row.kind)) autosave();
+  if (['upgrade', 'repair', 'nitro', 'compound', 'difficulty', 'model', 'paint', 'number']
+    .includes(row.kind)) autosave();
 }
 
 // ---------------------------------------------------------------------------
@@ -319,11 +350,17 @@ function renderRace(ctx, alpha) {
   const x = prev.x + (car.x - prev.x) * alpha;
 
   const shaken = effects.beginShake(ctx, canvas);
+  renderer.time = performance.now();
   renderer.render(track, pos, x);
+
+  // Scenery first, then cars: both run far to near, and a car alongside a palm
+  // should be in front of it.
+  drawScenery(ctx, canvas, renderer, track);
+
   drawCars(ctx, canvas, renderer, track, race.entries
     .filter(e => !e.isPlayer)
-    .map(e => ({ trackPos: e.car.trackPos, x: e.car.x, paint: rivalPaint(e) })), pos);
-  drawPlayer(ctx, canvas, car, input.state);
+    .map(e => ({ trackPos: e.car.trackPos, x: e.car.x, paint: e.identity.paint })), pos);
+  drawPlayer(ctx, canvas, car, input.state, app.career.garage);
   effects.draw(ctx);
   effects.endShake(ctx, shaken);
 
@@ -335,13 +372,6 @@ function renderRace(ctx, alpha) {
 
   drawHud(ctx, canvas, car, race.hudState());
   if (race.phase === PHASE.COUNTDOWN) drawCountdown(ctx, canvas, race.countdown);
-}
-
-function rivalPaint(entry) {
-  if (!entry._paint) {
-    entry._paint = { body: entry.identity.paint, trim: '#e8e8ee', glass: '#16222f' };
-  }
-  return entry._paint;
 }
 
 function wrap(z, L) { return ((z % L) + L) % L; }

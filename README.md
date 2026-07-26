@@ -22,7 +22,7 @@ then open `http://localhost:3000` (serve) or `http://localhost:8000` (python).
 - **M3 — Career: DONE.** 8-race seasons, championship points, prize money, 4 divisions with promotion, a 6-category upgrade shop wired into physics, standings, and 4 tracks. One tyre level is worth 0.85s a lap.
 - **M4 — Strategy: DONE.** Fuel burned per distance (a tank does 2.5 of a 3-lap race), a working pit lane on the left of the start straight, tyre wear and compounds, repair bills, DNF on a dry tank, and a nemesis with a real pace boost.
 - **M5 — Persistence: DONE.** Three save slots, autosave on every race finish / purchase / season transition, JSON export and import, schema `version` with a migration table, and graceful behaviour when storage is blocked or a slot is corrupt.
-- **M6 — Content & polish: PARTIAL.** Done: the night track (Providence Night, with ice), a minimap, engine/tyre/crash audio with mute, Arcade/Career/Simulation selectable, and all five tracks reworked into closed circuits. **Blocked:** the verbatim scenery and sprite port needs `top-flush-3-10.html` (see below).
+- **M6 — Content & polish: DONE.** The scenery, car sprites, paint + number-decal system and four theme palettes ported verbatim from `top-flush-3-10.html`; the night track (Providence Night, with ice); a minimap; engine/tyre/crash audio with mute; Arcade/Career/Simulation selectable.
 
 ### Controls
 
@@ -88,8 +88,23 @@ Five circuits: Island Loop, Providence Point, Dominican Ridge, Costa Rica Jungle
 
 Synthesised, no assets. Engine pitch tracks RPM, so an upshift is audible because the rev model resets rather than because a sound is triggered. `K` mutes. The `AudioContext` is only constructed inside `Audio.unlock()`, which is called from the first keydown/pointerdown/touchstart — nothing makes a noise before you touch it.
 
-## M6's scenery port is blocked
+## The ported art
 
-M6 ports the scenery draw functions (`drawTriplex`, `drawBodega`, `drawColmado`, `drawRoyalPalm`, `drawJungleTree`, `drawSoda`, `drawPalmTree`), the Celica/Soul/Lucid car sprites, the paint + number-decal system, and the four theme palettes **verbatim** from `top-flush-3-10.html` into `src/render/themes/`. That file is not in this repo and was not supplied, so the port cannot start.
+`src/render/themes/` holds the art from `top-flush-3-10.html`, copied across rather than reinterpreted (build plan non-negotiable #3: *"Scenery is ported, not rewritten... Do not restyle them."*).
 
-Everything that does not depend on it is in place. `src/render/cars.js` holds deliberately temporary placeholder geometry with the call signature the ported sprites need (`ctx, x, y, width, facing, paint`), so the port is a drop-in rather than a rewrite.
+| File | What's in it |
+|---|---|
+| `scenery.js` | `drawPalmTree`, `drawRoyalPalm`, `drawJungleTree`, `drawTriplex`, `drawBodega`, `drawColmado`, `drawSoda` — byte-identical, plus the building colour tables |
+| `sprites.js` | `drawCelica`, `drawSoul`, `drawLucid`, the rival body, and the paint + number-decal system (`bodyPaint`, `hexShift`, `drawNumberRoundel`) — byte-identical |
+| `backdrop.js` | `drawSky` and `makeSideObj` — byte-identical, including every `if(theme === N)` branch. This is where the four palettes live |
+| `palette.js` | the road/grass/shoulder colours from `drawRoad`'s theme branches, value for value |
+| `index.js` | the only new code: which palette a track uses, where its roadside objects stand, and drawing them against this engine's projection |
+
+Each ported file has a marked `verbatim below this line` block. Everything inside it is the original's; everything outside is plumbing that replaces what used to be page globals (`ctx`, `dpr`, `carColor`, `carNumber`, `theme`, `mountains`, `skyline`, `bgStars`).
+
+Two adaptations were needed and both are documented at the code:
+
+- **Scenery scale.** The original sized objects at 0.85 of the road's on-screen half-width, but its player car was 0.55 of that half-width where this engine's is 0.33. Copying 0.85 across made palms tower over the car, so `TUNE.SCENERY_SIZE` is 0.51 — the value that preserves the original's scenery-to-car proportion, which is what the art was drawn against.
+- **Night.** Nothing in the original was drawn at night, so Providence Night dims the ported daylight backdrop rather than inventing a palette for it.
+
+Car, paint and race number are chosen in the garage and saved with the career.

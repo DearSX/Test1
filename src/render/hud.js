@@ -62,9 +62,15 @@ function drawGauges(ctx, W, H, unit, race) {
 
   ctx.save();
   ctx.font = `700 ${s}px ${FONT}`;
+  // Panel behind the labels: the ported skies are bright, and cyan text on a
+  // near-white horizon is invisible.
+  if (bars.length) {
+    ctx.fillStyle = 'rgba(6,10,20,0.5)';
+    ctx.fillRect(x - s * 3.4, y - barH * 0.5, barW + s * 3.6, bars.length * barH * 1.9);
+  }
   for (const b of bars) {
     ctx.textAlign = 'right';
-    ctx.fillStyle = 'rgba(125,249,255,0.65)';
+    ctx.fillStyle = 'rgba(125,249,255,0.85)';
     ctx.fillText(b.label, x - unit * 0.012, y + barH * 0.85);
 
     ctx.fillStyle = 'rgba(6,10,20,0.7)';
@@ -106,6 +112,9 @@ function drawPitStatus(ctx, W, H, unit, race) {
   ctx.save();
   ctx.font = `700 ${Math.round(unit * 0.038)}px ${FONT}`;
   ctx.textAlign = 'center';
+  ctx.lineWidth = Math.max(3, unit * 0.006);
+  ctx.strokeStyle = 'rgba(6,10,20,0.8)';
+  ctx.strokeText(text, W / 2, H * 0.32);
   ctx.fillStyle = color;
   ctx.fillText(text, W / 2, H * 0.32);
   if (race.pitState === 'stopped' || race.pitState === 'lane') {
@@ -228,11 +237,18 @@ function drawReadouts(ctx, W, H, unit, car, race) {
   rows.push(['BEST', race.bestLap ? formatTime(race.bestLap) : '--:--.---']);
   rows.push(['NITRO', '|'.repeat(car.nitroCharges) || '-']);
 
+  // The ported backdrops are bright — a tropical sky is nearly white at the
+  // horizon — so the readouts get a panel behind them rather than relying on
+  // colour alone.
+  const panelW = s * 9.5, panelH = s * 1.35 * rows.length + s * 0.8;
+  ctx.fillStyle = 'rgba(6,10,20,0.5)';
+  ctx.fillRect(pad - s * 0.5, pad - s * 0.2, panelW, panelH);
+
   let y = pad + s;
   for (const [label, value] of rows) {
-    ctx.fillStyle = 'rgba(125,249,255,0.65)';
+    ctx.fillStyle = 'rgba(125,249,255,0.8)';
     ctx.fillText(label, pad, y);
-    ctx.fillStyle = '#e6f0ff';
+    ctx.fillStyle = '#ffffff';
     ctx.fillText(value, pad + s * 3.6, y);
     y += s * 1.35;
   }
@@ -256,6 +272,9 @@ function drawWarnings(ctx, W, H, unit, car, race = {}) {
   ctx.save();
   ctx.font = `700 ${Math.round(unit * 0.07)}px ${FONT}`;
   ctx.textAlign = 'center';
+  ctx.lineWidth = Math.max(3, unit * 0.008);
+  ctx.strokeStyle = 'rgba(6,10,20,0.8)';
+  ctx.strokeText(text, W / 2, H * 0.22);
   ctx.fillStyle = color;
   ctx.fillText(text, W / 2, H * 0.22);
   ctx.restore();

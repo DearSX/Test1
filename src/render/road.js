@@ -5,19 +5,18 @@
 // projection instead of recomputing it.
 
 import { TUNE } from '../tune.js';
+import { setBackdrop, drawSky, MARKINGS } from './themes/index.js';
 
+// The pre-M6 placeholder palette, kept only as the fallback when no theme is
+// supplied. Real tracks pass a palette ported from top-flush-3-10.html.
 export const DEFAULT_COLORS = {
-  skyTop: '#0b1030',
-  skyBottom: '#2a3f7a',
   grassLight: '#2e8f4e',
   grassDark: '#278245',
   roadLight: '#5a5a62',
   roadDark: '#55555d',
-  rumbleLight: '#e8e8e8',
-  rumbleDark: '#c8283c',
-  laneLine: '#e8e8e8',
-  startLine: '#ffffff',
-  fog: '#2a3f7a',
+  shoulder: 'rgba(120,110,90,.5)',
+  fleck: null,
+  sky: '#8fdcff',
 };
 
 export class RoadRenderer {
@@ -25,6 +24,7 @@ export class RoadRenderer {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
     this.colors = colors;
+    this.themeIndex = 0;
     this.cameraDepth = 1 / Math.tan((TUNE.FOV / 2) * Math.PI / 180);
     // Furthest segment actually drawn last frame — the horizon the sky and
     // (later) the theme backdrop clip against.
@@ -34,6 +34,12 @@ export class RoadRenderer {
   resize(w, h) {
     this.canvas.width = w;
     this.canvas.height = h;
+  }
+
+  // Swap in a ported theme: its road palette, and which backdrop branch to draw.
+  setTheme({ palette, index }) {
+    if (palette) this.colors = palette;
+    if (index !== undefined) this.themeIndex = index;
   }
 
   // Writes camera + screen coords onto a segment endpoint, in place.
@@ -67,7 +73,7 @@ export class RoadRenderer {
     const basePercent = (position % segLen) / segLen;
     const camY = TUNE.CAMERA_HEIGHT + track.elevationAt(position);
 
-    this.drawBackdrop(ctx, W, H);
+    this.drawBackdrop(ctx, W, H, baseSegment.curve);
 
     let maxY = H;   // clip: never draw below ground already laid down
     let x = 0;      // accumulated bend
@@ -102,7 +108,7 @@ export class RoadRenderer {
       const clarity = 1 / Math.pow(Math.E, (n / TUNE.DRAW_DISTANCE) ** 2 * TUNE.FOG_DENSITY);
       if (clarity < 1) {
         ctx.globalAlpha = 1 - clarity;
-        ctx.fillStyle = this.colors.fog;
+        ctx.fillStyle = this.colors.night ? '#0a1020' : this.colors.sky;
         ctx.fillRect(0, seg.p2.screen.y, W, seg.p1.screen.y - seg.p2.screen.y);
         ctx.globalAlpha = 1;
       }
@@ -114,15 +120,27 @@ export class RoadRenderer {
     this.horizonY = horizon;
   }
 
-  drawBackdrop(ctx, W, H) {
-    const c = this.colors;
-    // Runs all the way down and ends on the fog colour, so the hazed far
-    // segments meet the sky with no seam. Real theme backdrops arrive at M6.
-    const sky = ctx.createLinearGradient(0, 0, 0, H * 0.55);
-    sky.addColorStop(0, c.skyTop);
-    sky.addColorStop(1, c.skyBottom);
-    ctx.fillStyle = sky;
-    ctx.fillRect(0, 0, W, H);
+  // The ported backdrop. drawSky() paints sky, sun, clouds, the ocean band and
+  // whichever theme silhouette applies — island hills, the Providence skyline,
+  // the Cordillera, or the Costa Rican volcano.
+  drawBackdrop(ctx, W, H, curve) {
+    setBackdrop(ctx, {
+      W, H,
+      horizonY: H * 0.5,        // where this projection puts the horizon
+      curve: curve * 12,        // the original's curve was a screen-space offset
+      theme: this.themeIndex,
+      dpr: 1,
+    });
+    drawSky(this.time ?? 0);
+    if (this.colors.night) {
+      // Providence Night: the ported daylight backdrop, darkened. Nothing in the
+      // original was drawn at night, and inventing one would be restyling.
+      // Heavy enough to put the ported daylight sun and clouds down to a faint
+      // glow, which is as close to night as dimming can get without redrawing
+      // art the plan says not to touch.
+      ctx.fillStyle = 'rgba(6,10,26,0.8)';
+      ctx.fillRect(0, 0, W, H * 0.5 + 2);
+    }
   }
 
   drawSegment(ctx, W, seg) {
@@ -130,13 +148,24 @@ export class RoadRenderer {
     const p1 = seg.p1.screen, p2 = seg.p2.screen;
     const alt = Math.floor(seg.index / TUNE.RUMBLE_LEN) % 2 === 0;
 
-    // grass
+    // grass / roadside
     ctx.fillStyle = alt ? c.grassLight : c.grassDark;
     ctx.fillRect(0, p2.y, W, p1.y - p2.y);
 
-    // rumble strips
+    // the original's grass texture fleck, on the themes that had one
+    if (alt && c.fleck) {
+      ctx.fillStyle = c.fleck;
+      ctx.fillRect((seg.index * c.fleckSeed) % W, p2.y, p1.w * 0.04, p1.y - p2.y);
+    }
+
+    // gravel shoulder, then the red/white curbs
+    const sh = Math.max(1.5, p1.w * 0.05);
+    ctx.fillStyle = c.shoulder;
+    poly(ctx, p1.x - p1.w - sh, p1.y, p1.x - p1.w, p1.y, p2.x - p2.w, p2.y, p2.x - p2.w - sh, p2.y, c.shoulder);
+    poly(ctx, p1.x + p1.w + sh, p1.y, p1.x + p1.w, p1.y, p2.x + p2.w, p2.y, p2.x + p2.w + sh, p2.y, c.shoulder);
+
     const r1 = p1.w / 6, r2 = p2.w / 6;
-    const rumbleColor = alt ? c.rumbleLight : c.rumbleDark;
+    const rumbleColor = alt ? MARKINGS.curbLight : MARKINGS.curbDark;
     poly(ctx, p1.x - p1.w - r1, p1.y, p1.x - p1.w, p1.y, p2.x - p2.w, p2.y, p2.x - p2.w - r2, p2.y, rumbleColor);
     poly(ctx, p1.x + p1.w + r1, p1.y, p1.x + p1.w, p1.y, p2.x + p2.w, p2.y, p2.x + p2.w + r2, p2.y, rumbleColor);
 
@@ -146,14 +175,22 @@ export class RoadRenderer {
 
     // start/finish stripe
     if (seg.index < TUNE.RUMBLE_LEN) {
-      poly(ctx, p1.x - p1.w, p1.y, p1.x + p1.w, p1.y, p2.x + p2.w, p2.y, p2.x - p2.w, p2.y, c.startLine);
+      poly(ctx, p1.x - p1.w, p1.y, p1.x + p1.w, p1.y, p2.x + p2.w, p2.y, p2.x - p2.w, p2.y, MARKINGS.curbLight);
     }
 
-    // centre paint — decoration only. Lateral position is continuous; there are
-    // no lanes to snap to.
+    // The original's lane dividers and dashed yellow centreline. Decoration
+    // only: lateral position is continuous and there are no lanes to snap to.
+    const lw1 = Math.max(1.5, p1.w * 0.02), lw2 = Math.max(1.5, p2.w * 0.02);
+    ctx.fillStyle = MARKINGS.lane;
+    for (const side of [-0.3, 0.3]) {
+      poly(ctx,
+        p1.x + p1.w * side - lw1 / 2, p1.y, p1.x + p1.w * side + lw1 / 2, p1.y,
+        p2.x + p2.w * side + lw2 / 2, p2.y, p2.x + p2.w * side - lw2 / 2, p2.y,
+        MARKINGS.lane);
+    }
     if (alt) {
-      const l1 = p1.w / 32, l2 = p2.w / 32;
-      poly(ctx, p1.x - l1, p1.y, p1.x + l1, p1.y, p2.x + l2, p2.y, p2.x - l2, p2.y, c.laneLine);
+      poly(ctx, p1.x - lw1, p1.y, p1.x + lw1, p1.y, p2.x + lw2, p2.y, p2.x - lw2, p2.y,
+        MARKINGS.centreLine);
     }
   }
 }

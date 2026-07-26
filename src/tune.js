@@ -13,6 +13,14 @@ export const TUNE = {
   RUMBLE_LEN: 3,             // segments per rumble stripe
   FOG_DENSITY: 5,            // distance haze; also hides far segments popping over crests
   MINIMAP_CURVE_SCALE: 0.0055,  // radians per curve-unit-per-segment on the minimap
+  SCENERY_SPACING: 6,        // segments between candidate roadside slots
+  SCENERY_DENSITY: 0.55,     // chance a slot is filled
+  // The original sized scenery at 0.85 of the road's on-screen half-width, but
+  // its player car was 0.55 of that half-width where ours is 0.33 — so copying
+  // 0.85 across made palms tower over the car. 0.51 preserves the original's
+  // scenery-to-car proportion, which is what the art was drawn against.
+  SCENERY_SIZE: 0.51,
+  SCENERY_MAX_SCREEN_FRAC: 1.6,  // cap on the nearest objects, in canvas heights
 
   // ===========================================================================
   // THE SOUL DIAL

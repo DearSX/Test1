@@ -93,11 +93,14 @@ export function drawMinimap(ctx, canvas, track, entries, opts = {}) {
   ctx.save();
 
   // backing
-  ctx.fillStyle = 'rgba(6,10,20,0.55)';
+  ctx.fillStyle = 'rgba(6,10,20,0.72)';
   ctx.fillRect(x0, y0, size, size);
+  ctx.strokeStyle = 'rgba(125,249,255,0.35)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x0 + 0.5, y0 + 0.5, size - 1, size - 1);
 
   // the circuit
-  ctx.strokeStyle = 'rgba(230,240,255,0.55)';
+  ctx.strokeStyle = 'rgba(230,240,255,0.75)';
   ctx.lineWidth = Math.max(2, unit * 0.006);
   ctx.lineJoin = 'round';
   ctx.beginPath();

@@ -1,88 +1,60 @@
 // Car rendering.
 //
-// PLACEHOLDER GEOMETRY. At M6 the Celica / Soul / Lucid sprites, the paint
-// system and the number decals are ported verbatim from top-flush-3-10.html and
-// replace drawCarBody() below. Nothing here is meant to be kept or restyled —
-// it exists so M1 through M5 are playable and testable. Keep the call signature
-// (ctx, x, y, width, facing, paint) so the port is a drop-in.
+// The bodies are the PORTED sprites from top-flush-3-10.html — Celica (GT-S
+// Coupe), Kia Soul and Lucid Air — plus its paint and number-decal system, all
+// verbatim in render/themes/sprites.js. This file is only the placement: work out
+// where on screen a car goes and how big, then hand off.
+//
+// The placeholder geometry that stood in for these through M1-M5 is gone.
 
 import { TUNE } from '../tune.js';
+import {
+  setSpriteContext, carById, drawRivalBody, CARS,
+} from './themes/sprites.js';
 
-export const PAINTS = {
-  player: { body: '#d8342c', trim: '#f2e6c9', glass: '#1b2a3a' },
-  rival1: { body: '#2f6fd0', trim: '#dfe8f5', glass: '#16222f' },
-  rival2: { body: '#e0a51f', trim: '#3b2f14', glass: '#1b2a3a' },
-  rival3: { body: '#37a05a', trim: '#e8f4ea', glass: '#16222f' },
-  rival4: { body: '#8d43c4', trim: '#efe2f7', glass: '#1b2a3a' },
-  rival5: { body: '#d9d9de', trim: '#2a2a30', glass: '#16222f' },
-};
+export { CARS, PAINT_OPTIONS, NUMBER_OPTIONS } from './themes/sprites.js';
 
-// Draws a car centred on (x, y) with the given on-screen width.
-// facing: -1..1, how much the car is turned (steering or lateral drift).
-export function drawCarBody(ctx, x, y, width, facing = 0, paint = PAINTS.player, opts = {}) {
-  const w = width, h = width * 0.52;
-  const lean = facing * w * 0.05;
-
-  ctx.save();
-  ctx.translate(x, y);
-
-  // ground shadow
-  ctx.fillStyle = 'rgba(0,0,0,0.35)';
-  ctx.beginPath();
-  ctx.ellipse(0, 0, w * 0.5, h * 0.16, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  // rear tyres
-  ctx.fillStyle = '#15151a';
-  rrect(ctx, -w * 0.5, -h * 0.42, w * 0.16, h * 0.42, 2);
-  rrect(ctx, w * 0.34, -h * 0.42, w * 0.16, h * 0.42, 2);
-
-  // body
-  ctx.fillStyle = paint.body;
-  rrect(ctx, -w * 0.44 + lean, -h * 0.72, w * 0.88, h * 0.58, w * 0.06);
-
-  // cabin / rear glass
-  ctx.fillStyle = paint.glass;
-  rrect(ctx, -w * 0.29 + lean * 1.4, -h * 0.98, w * 0.58, h * 0.34, w * 0.05);
-
-  // roof
-  ctx.fillStyle = paint.body;
-  rrect(ctx, -w * 0.31 + lean * 1.4, -h * 1.06, w * 0.62, h * 0.12, w * 0.04);
-
-  // spoiler
-  ctx.fillStyle = paint.trim;
-  rrect(ctx, -w * 0.46 + lean, -h * 0.78, w * 0.92, h * 0.07, 2);
-
-  // lights
-  ctx.fillStyle = opts.braking ? '#ff3b30' : '#7a1f1a';
-  rrect(ctx, -w * 0.38 + lean, -h * 0.52, w * 0.16, h * 0.1, 2);
-  rrect(ctx, w * 0.22 + lean, -h * 0.52, w * 0.16, h * 0.1, 2);
-
-  if (opts.nitro) {
-    ctx.fillStyle = 'rgba(125,249,255,0.85)';
-    rrect(ctx, -w * 0.1, -h * 0.36, w * 0.2, h * 0.16, 3);
-  }
-
-  ctx.restore();
-}
+// Rival paints, from the original's CAR_COLORS.
+export const RIVAL_COLORS = ['#3d7bff','#7dff6a','#ffd23d','#b66bff','#3dfcff','#ff8a3d','#ff5ad0'];
 
 // The player, planted at the bottom of the screen. The camera already follows
 // lateral position, so the sprite only leans — it does not slide across.
 //
 // Width comes from the same projection the rivals use, evaluated at the camera's
-// own distance to the car (CAMERA_HEIGHT * cameraDepth in this camera model).
-// A fixed fraction of the canvas would make a rival drawn alongside you the
-// wrong size relative to your own car.
-export function drawPlayer(ctx, canvas, car, input) {
+// own distance to the car, so a rival drawn alongside is the right size relative
+// to your own.
+export function drawPlayer(ctx, canvas, car, input, garage = null) {
   const W = canvas.width, H = canvas.height;
   const width = (TUNE.ROAD_WIDTH / TUNE.CAMERA_HEIGHT) * (W / 2) * TUNE.CAR_SCREEN_WIDTH;
   const y = H - H * 0.055;
-  // Lean into the steering, plus a little from how hard the corner is pushing.
-  const facing = clamp(input.steer * 0.8 + car.lateralSlip * Math.sign(-car.x || 1) * 0.2, -1, 1);
-  drawCarBody(ctx, W / 2, y, width, facing, PAINTS.player, {
-    braking: input.brake > 0,
-    nitro: car.nitroTimer > 0,
+  const lean = clamp(input.steer * 0.8 + car.lateralSlip * Math.sign(-car.x || 1) * 0.2, -1, 1) * 0.35;
+
+  setSpriteContext(ctx, {
+    dpr: 1,
+    carColor: garage && garage.paint ? garage.paint : null,
+    carNumber: garage && garage.number ? String(garage.number) : null,
   });
+
+  ctx.save();
+  ctx.translate(W / 2, y);
+  ctx.rotate(lean);
+
+  // The original drew nitro flames behind the car before the body.
+  if (car.nitroTimer > 0) {
+    for (let i = 0; i < 5; i++) {
+      const fx = (Math.random() - 0.5) * width * 0.5;
+      const fl = width * (0.15 + Math.random() * 0.3);
+      ctx.fillStyle = Math.random() < 0.5 ? '#ffd23d' : '#ff7b3d';
+      ctx.beginPath();
+      ctx.moveTo(fx - width * 0.06, width * 0.05);
+      ctx.lineTo(fx + width * 0.06, width * 0.05);
+      ctx.lineTo(fx, width * 0.05 + fl);
+      ctx.closePath(); ctx.fill();
+    }
+  }
+
+  carById(garage ? garage.model : 'celica').draw(width);
+  ctx.restore();
 }
 
 // Draws the other cars, far to near, against the projection road.js just wrote
@@ -136,7 +108,11 @@ export function drawCars(ctx, canvas, renderer, track, cars, cameraZ) {
       // Hidden behind a crest.
       if (y > seg.clip) continue;
 
-      drawCarBody(ctx, screenX, y, width, 0, c.paint ?? PAINTS.rival1, { braking: c.braking });
+      setSpriteContext(ctx, { dpr: 1 });
+      ctx.save();
+      ctx.translate(screenX, y);
+      drawRivalBody(width, c.paint ?? RIVAL_COLORS[0], c.dark ?? '#1b2a3a');
+      ctx.restore();
       drawn++;
     }
   }
@@ -150,22 +126,6 @@ function offsetFromCamera(track, baseIndex, trackPos) {
   let n = track.findIndex(trackPos) - baseIndex;
   if (n < 0) n += N;
   return n;
-}
-
-function rrect(ctx, x, y, w, h, r) {
-  const rad = Math.min(r, Math.abs(w) / 2, Math.abs(h) / 2);
-  ctx.beginPath();
-  ctx.moveTo(x + rad, y);
-  ctx.lineTo(x + w - rad, y);
-  ctx.quadraticCurveTo(x + w, y, x + w, y + rad);
-  ctx.lineTo(x + w, y + h - rad);
-  ctx.quadraticCurveTo(x + w, y + h, x + w - rad, y + h);
-  ctx.lineTo(x + rad, y + h);
-  ctx.quadraticCurveTo(x, y + h, x, y + h - rad);
-  ctx.lineTo(x, y + rad);
-  ctx.quadraticCurveTo(x, y, x + rad, y);
-  ctx.closePath();
-  ctx.fill();
 }
 
 function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }

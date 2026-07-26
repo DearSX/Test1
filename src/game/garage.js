@@ -15,9 +15,11 @@ export const TYRE_COMPOUNDS = {
 
 export class Garage {
   constructor(init = {}) {
+    // Feeds the ported paint + number-decal system in render/themes/sprites.js.
+    // paint === null means the car's stock paint, exactly as the original meant it.
     this.model = init.model ?? 'celica';
-    this.paint = init.paint ?? '#d8342c';
-    this.number = init.number ?? 1;
+    this.paint = init.paint ?? null;
+    this.number = init.number ?? null;
     this.damage = init.damage ?? 0;
     this.nitroCharges = init.nitroCharges ?? TUNE.NITRO_CHARGES_START;
     this.tyreCompound = init.tyreCompound ?? 'medium';
