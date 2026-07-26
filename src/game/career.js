@@ -13,6 +13,7 @@ import { TRACKS } from '../data/tracks/index.js';
 import { makeRng } from '../core/rng.js';
 import { MAX_LEVEL, CONSUMABLES } from '../data/upgrades.js';
 import { TUNE } from '../tune.js';
+import { SAVE_VERSION } from '../core/storage.js';
 
 export class Career {
   constructor(init = {}) {
@@ -28,6 +29,12 @@ export class Career {
     this.bestLaps = init.bestLaps ?? {};          // trackId -> ms
     this.history = init.history ?? [];            // one entry per race finished
     this.lastRaceReport = null;
+    // Section 6's settings block. difficulty lives here too, mirrored from the
+    // field above so there is exactly one source of truth on load.
+    this.settings = {
+      manualGears: init.settings?.manualGears ?? false,
+      muted: init.settings?.muted ?? false,
+    };
 
     this.standings = init.standings ?? this.freshStandings();
   }
@@ -192,22 +199,59 @@ export class Career {
     return outcome;
   }
 
-  toJSON() {
+  // The save shape from section 6. `division` is stored as its id rather than an
+  // index so reordering DIVISIONS later can't silently move an existing career
+  // into the wrong tier.
+  toSave() {
+    const me = this.standings.find(s => s.isPlayer);
     return {
+      version: SAVE_VERSION,
       driverName: this.driverName,
-      divisionIndex: this.divisionIndex,
+      division: this.division.id,
       seasonRace: this.seasonRace,
       money: this.money,
-      seed: this.seed,
-      difficulty: this.difficulty,
-      seasonsWon: this.seasonsWon,
-      racesWon: this.racesWon,
-      bestLaps: { ...this.bestLaps },
-      history: this.history.slice(-40),
+      championshipPoints: me ? me.points : 0,
       standings: this.standings.map(r => ({ ...r })),
       car: this.garage.toJSON(),
+      records: {
+        bestLap: { ...this.bestLaps },
+        racesWon: this.racesWon,
+        seasonsWon: this.seasonsWon,
+      },
+      settings: {
+        manualGears: this.settings.manualGears,
+        difficulty: this.difficulty,
+        muted: this.settings.muted,
+      },
+      // Not in the spec's sketch, but the career is not reproducible without the
+      // seed (it decides the roster and every race) and the history drives the
+      // results screens.
+      seed: this.seed,
+      history: this.history.slice(-40),
     };
   }
+
+  static fromSave(save) {
+    const divisionIndex = Math.max(0, DIVISIONS.findIndex(d => d.id === save.division));
+    return new Career({
+      driverName: save.driverName,
+      divisionIndex: divisionIndex === -1 ? 0 : divisionIndex,
+      seasonRace: save.seasonRace ?? 0,
+      money: save.money ?? 0,
+      seed: save.seed,
+      difficulty: save.settings?.difficulty ?? 'career',
+      settings: save.settings,
+      seasonsWon: save.records?.seasonsWon ?? 0,
+      racesWon: save.records?.racesWon ?? 0,
+      bestLaps: { ...(save.records?.bestLap ?? {}) },
+      history: (save.history ?? []).map(r => ({ ...r })),
+      standings: (save.standings ?? []).map(r => ({ ...r })),
+      car: save.car,
+    });
+  }
+
+  // Kept for debugging; the save path goes through toSave().
+  toJSON() { return this.toSave(); }
 }
 
 // Section 7. One setting, three values.

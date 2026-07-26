@@ -57,6 +57,13 @@ function footer(ctx, p, text) {
   ctx.fillText(text, p.x0 + p.boxW / 2, p.y0 + p.boxH - p.lineH * 0.6);
 }
 
+// Where a row's note should start: after the label, never on top of it. A fixed
+// offset overlapped as soon as a label was longer than expected.
+function noteX(ctx, p, label, minColumns) {
+  const labelWidth = ctx.measureText(`  ${label}`).width;
+  return p.x0 + p.pad + Math.max(p.s * minColumns, labelWidth + p.s * 1.2);
+}
+
 // Level pips, so an upgrade's state reads at a glance.
 function pips(level, max = 5) {
   return '#'.repeat(level) + '.'.repeat(Math.max(0, max - level));
@@ -115,6 +122,7 @@ export function shopRows(career) {
     affordable: true,
   });
 
+  rows.push({ kind: 'export', label: 'Export save file', note: 'download this career as .json', value: '', cost: null, affordable: true });
   rows.push({ kind: 'race', label: 'GO RACING', note: career.track.blurb, value: '', cost: null, affordable: true });
   return rows;
 }
@@ -149,8 +157,9 @@ export function drawShop(ctx, canvas, career, selected) {
     ctx.fillText(`${on ? '>' : ' '} ${r.label}`, p.x0 + p.pad, y);
 
     ctx.fillStyle = on ? 'rgba(255,176,32,0.7)' : 'rgba(230,240,255,0.35)';
+    const nx = noteX(ctx, p, r.label, 11);
     ctx.font = `700 ${Math.round(p.s * 0.78)}px ${FONT}`;
-    ctx.fillText(r.note, p.x0 + p.pad + p.s * 11, y);
+    ctx.fillText(r.note, nx, y);
     ctx.font = `700 ${p.s}px ${FONT}`;
 
     ctx.textAlign = 'right';
@@ -163,7 +172,8 @@ export function drawShop(ctx, canvas, career, selected) {
     y += p.lineH;
   }
 
-  footer(ctx, p, `${career.track.name} · up/down select · enter buy · S standings · R race`);
+  footer(ctx, p,
+    `${career.track.name} · up/down select · enter buy · S standings · R race · ESC slots`);
 }
 
 // ---------------------------------------------------------------------------
@@ -312,6 +322,78 @@ export function drawSeasonEnd(ctx, canvas, outcome) {
       : `stayed in ${outcome.division} — top ${TUNE.PROMOTION_PLACES} go up`, W / 2, y);
 
   footer(ctx, p, 'press enter to start the next season');
+}
+
+// ---------------------------------------------------------------------------
+// Save slots (M5)
+// ---------------------------------------------------------------------------
+
+export function slotRows(summaries) {
+  const rows = summaries.map(sm => ({
+    kind: 'slot', slot: sm.slot, summary: sm,
+    label: `SLOT ${sm.slot + 1}`,
+    note: sm.empty
+      ? 'empty — start a new career'
+      : `${sm.driverName} · ${divisionName(sm.division)} round ${sm.seasonRace + 1}/${TUNE.RACES_PER_SEASON}`,
+    value: sm.empty ? '' : `$${sm.money.toLocaleString()}`,
+  }));
+  rows.push({ kind: 'import', label: 'IMPORT SAVE FILE', note: 'load a career from a .json file', value: '' });
+  return rows;
+}
+
+export function drawSlots(ctx, canvas, summaries, selected, { message = null, persistent = true } = {}) {
+  const rows = slotRows(summaries);
+  const p = panel(ctx, canvas, { rows: rows.length + 3 });
+  header(ctx, p, 'VELOCITY 3000', 'SELECT A CAREER');
+
+  let y = p.y0 + p.lineH * 3;
+  ctx.font = `700 ${p.s}px ${FONT}`;
+
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
+    const on = i === selected;
+    if (on) {
+      ctx.fillStyle = 'rgba(125,249,255,0.13)';
+      ctx.fillRect(p.x0 + p.pad * 0.4, y - p.lineH * 0.72, p.boxW - p.pad * 0.8, p.lineH);
+    }
+    ctx.textAlign = 'left';
+    ctx.fillStyle = on ? '#ffb020' : r.kind === 'import' ? 'rgba(125,249,255,0.75)' : 'rgba(230,240,255,0.9)';
+    ctx.fillText(`${on ? '>' : ' '} ${r.label}`, p.x0 + p.pad, y);
+    ctx.fillStyle = on ? 'rgba(255,176,32,0.75)' : 'rgba(230,240,255,0.4)';
+    const nx = noteX(ctx, p, r.label, 7);
+    ctx.font = `700 ${Math.round(p.s * 0.8)}px ${FONT}`;
+    ctx.fillText(r.note, nx, y);
+    ctx.font = `700 ${p.s}px ${FONT}`;
+    if (r.value) {
+      ctx.textAlign = 'right';
+      ctx.fillStyle = on ? '#ffb020' : 'rgba(230,240,255,0.8)';
+      ctx.fillText(r.value, p.x0 + p.boxW - p.pad, y);
+    }
+    y += p.lineH;
+  }
+
+  if (message) {
+    y += p.lineH * 0.4;
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#ff7a6b';
+    ctx.font = `700 ${Math.round(p.s * 0.85)}px ${FONT}`;
+    ctx.fillText(message, p.x0 + p.pad, y);
+  }
+
+  if (!persistent) {
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#ffb020';
+    ctx.font = `700 ${Math.round(p.s * 0.8)}px ${FONT}`;
+    ctx.fillText('storage is blocked — progress will not survive a reload',
+      p.x0 + p.boxW / 2, p.y0 + p.boxH - p.lineH * 1.5);
+  }
+
+  footer(ctx, p, 'up/down select · enter load or start · D delete slot');
+}
+
+function divisionName(id) {
+  const d = DIVISIONS.find(x => x.id === id);
+  return d ? d.name : id;
 }
 
 function ordinal(n) {

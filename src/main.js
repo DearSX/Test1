@@ -1,8 +1,8 @@
-// M3 bootstrap. Done when: buying tyres measurably changes your lap time.
+// M5 bootstrap. Done when: you can close the tab mid-season and come back.
 //
-// The whole career loop: garage -> pre-race -> race -> report -> garage, with an
-// 8-race season, championship points, prize money and promotion. Fuel and pit
-// strategy arrive at M4; saving arrives at M5.
+// The whole game: slot picker -> garage -> pre-race -> race -> report -> garage,
+// across 8-race seasons and four divisions, autosaving at every point the state
+// actually changes.
 
 import { TUNE } from './tune.js';
 import { startLoop } from './core/loop.js';
@@ -11,8 +11,10 @@ import { RoadRenderer } from './render/road.js';
 import { drawPlayer, drawCars } from './render/cars.js';
 import { drawHud, drawCountdown, drawResults } from './render/hud.js';
 import {
-  drawShop, drawStandings, drawPreRace, drawRaceReport, drawSeasonEnd, shopRows,
+  drawShop, drawStandings, drawPreRace, drawRaceReport, drawSeasonEnd, drawSlots,
+  shopRows, slotRows,
 } from './render/screens.js';
+import { SaveStore, downloadSave, pickSaveFile } from './core/storage.js';
 import { Effects } from './render/effects.js';
 import { Race, PHASE } from './game/race.js';
 import { Career } from './game/career.js';
@@ -20,7 +22,7 @@ import { TYRE_COMPOUNDS } from './game/garage.js';
 import { getTrack } from './data/tracks/index.js';
 
 const SCREEN = {
-  SHOP: 'shop', STANDINGS: 'standings', PRERACE: 'prerace',
+  SLOTS: 'slots', SHOP: 'shop', STANDINGS: 'standings', PRERACE: 'prerace',
   RACE: 'race', RESULTS: 'results', REPORT: 'report', SEASON: 'season',
 };
 
@@ -30,15 +32,38 @@ const renderer = new RoadRenderer(canvas);
 const input = new Input();
 const effects = new Effects();
 
+const store = new SaveStore();
+
 const app = {
-  screen: SCREEN.SHOP,
-  career: new Career(),
+  screen: SCREEN.SLOTS,
+  career: null,
+  slot: null,
   race: null,
   track: null,
   sel: 0,
   report: null,
   seasonOutcome: null,
+  message: null,
 };
+
+// Autosave. Called after anything that changes career state — a race result, a
+// purchase, a season rolling over. Section 6 asks for exactly those three, and
+// the cost of writing a few KB of JSON is nil next to losing a season.
+function autosave() {
+  if (!app.career || app.slot === null) return;
+  if (!store.write(app.slot, app.career.toSave())) {
+    app.message = 'Could not save — browser storage is full or blocked.';
+  }
+}
+
+function startCareer(slot, save = null) {
+  app.slot = slot;
+  app.career = save ? Career.fromSave(save) : new Career();
+  app.sel = 0;
+  app.message = null;
+  app.screen = app.career.seasonComplete ? SCREEN.SHOP : SCREEN.SHOP;
+  autosave();
+}
 
 let prev = { trackPos: 0, x: 0 };
 
@@ -59,6 +84,7 @@ function startRace() {
   app.race = new Race(app.track, cfg);
   app.race.player.nitroCharges = app.career.garage.nitroCharges;
   app.race.player.damage = app.career.garage.damage;
+  app.race.player.manualGears = app.career.settings.manualGears;
   prev = { trackPos: app.race.player.trackPos, x: app.race.player.x };
   app.screen = SCREEN.RACE;
 }
@@ -67,12 +93,14 @@ function finishRace() {
   app.report = app.career.settleRace(app.race.results(), app.race.player, {
     pitRepairDamage: app.race.playerPitRepairDamage,
   });
+  autosave();                   // race finish
   app.screen = SCREEN.REPORT;
 }
 
 function leaveReport() {
   if (app.career.seasonComplete) {
     app.seasonOutcome = app.career.concludeSeason();
+    autosave();                 // season transition
     app.screen = SCREEN.SEASON;
   } else {
     app.sel = 0;
@@ -89,6 +117,7 @@ window.addEventListener('keydown', e => {
   if (['ArrowUp', 'ArrowDown', 'Enter', 'Space'].includes(code)) e.preventDefault();
 
   switch (app.screen) {
+    case SCREEN.SLOTS: return slotsKey(code);
     case SCREEN.SHOP: return shopKey(code);
     case SCREEN.STANDINGS: app.screen = SCREEN.SHOP; return;
     case SCREEN.PRERACE:
@@ -96,7 +125,10 @@ window.addEventListener('keydown', e => {
       if (code === 'Escape') app.screen = SCREEN.SHOP;
       return;
     case SCREEN.RACE:
-      if (code === 'KeyM') app.race.player.manualGears = !app.race.player.manualGears;
+      if (code === 'KeyM') {
+        app.race.player.manualGears = !app.race.player.manualGears;
+        app.career.settings.manualGears = app.race.player.manualGears;
+      }
       if (code === 'KeyP') app.race.pitRepairRequested = !app.race.pitRepairRequested;
       if (code === 'Escape') app.screen = SCREEN.SHOP;
       return;
@@ -112,12 +144,44 @@ window.addEventListener('keydown', e => {
   }
 });
 
+function slotsKey(code) {
+  const rows = slotRows(store.summaries());
+  if (code === 'ArrowUp') { app.sel = (app.sel - 1 + rows.length) % rows.length; return; }
+  if (code === 'ArrowDown') { app.sel = (app.sel + 1) % rows.length; return; }
+
+  const row = rows[app.sel];
+
+  if (code === 'KeyD' && row.kind === 'slot' && !row.summary.empty) {
+    store.clear(row.slot);
+    app.message = `Slot ${row.slot + 1} deleted.`;
+    return;
+  }
+  if (code !== 'Enter' && code !== 'Space') return;
+
+  if (row.kind === 'import') {
+    pickSaveFile().then(text => {
+      if (text === null) return;
+      const result = store.fromJsonText(text);
+      if (!result.ok) { app.message = result.error; return; }
+      // Imported saves land in the first empty slot, or slot 1 if all are full.
+      const empty = store.summaries().find(sm => sm.empty);
+      const slot = empty ? empty.slot : 0;
+      store.write(slot, result.save);
+      startCareer(slot, store.read(slot));
+    });
+    return;
+  }
+
+  startCareer(row.slot, row.summary.empty ? null : store.read(row.slot));
+}
+
 function shopKey(code) {
   const rows = shopRows(app.career);
   if (code === 'ArrowUp') app.sel = (app.sel - 1 + rows.length) % rows.length;
   if (code === 'ArrowDown') app.sel = (app.sel + 1) % rows.length;
   if (code === 'KeyS') { app.screen = SCREEN.STANDINGS; return; }
   if (code === 'KeyR') { app.screen = SCREEN.PRERACE; return; }
+  if (code === 'Escape') { app.sel = app.slot ?? 0; app.screen = SCREEN.SLOTS; return; }
   if (code !== 'Enter' && code !== 'Space') return;
 
   const row = rows[app.sel];
@@ -144,10 +208,17 @@ function shopKey(code) {
       g.tyreCompound = keys[(keys.indexOf(g.tyreCompound) + 1) % keys.length];
       break;
     }
+    case 'export':
+      downloadSave(app.career.toSave(),
+        `velocity3000-${app.career.driverName.toLowerCase()}-slot${app.slot + 1}.json`);
+      break;
     case 'race':
       app.screen = SCREEN.PRERACE;
       break;
   }
+
+  // Any purchase changes the career, so it gets written straight away.
+  if (['upgrade', 'repair', 'nitro', 'compound'].includes(row.kind)) autosave();
 }
 
 // ---------------------------------------------------------------------------
@@ -189,6 +260,10 @@ function render(alpha) {
   }
 
   switch (app.screen) {
+    case SCREEN.SLOTS:
+      drawSlots(ctx, canvas, store.summaries(), app.sel,
+        { message: app.message, persistent: store.persistent });
+      break;
     case SCREEN.SHOP: drawShop(ctx, canvas, app.career, app.sel); break;
     case SCREEN.STANDINGS: drawStandings(ctx, canvas, app.career); break;
     case SCREEN.PRERACE: drawPreRace(ctx, canvas, app.career); break;
@@ -229,6 +304,15 @@ function rivalPaint(entry) {
 }
 
 function wrap(z, L) { return ((z % L) + L) % L; }
+
+// Resume the slot that was last played, so returning to the tab lands you where
+// you left off instead of on a menu.
+{
+  const last = store.lastSlot();
+  const summaries = store.summaries();
+  app.sel = last !== null ? last : 0;
+  if (last !== null && !summaries[last].empty) app.sel = last;
+}
 
 // Dev hook. Lets a browser session (or an automated check) inspect and poke game
 // state without a debugger — e.g. put the car in the pit lane, or drain the tank,
