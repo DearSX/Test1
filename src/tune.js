@@ -79,9 +79,45 @@ export const TUNE = {
   NITRO_DURATION: 2.5,       // seconds
   NITRO_CHARGES_START: 3,
 
-  // --- rivals (M2) ---
+  // --- racing (M2) ---
+  FIELD_SIZE: 20,            // you + 19 rivals
+  LAPS_DEFAULT: 3,
+  COUNTDOWN: 3.2,            // seconds on the grid
+  GRID_SPACING: 700,         // world units between grid slots (2.7 car lengths)
+  GRID_STAGGER: 0.35,        // lateral offset, alternating left/right
+  POST_FINISH_GRACE: 4,      // seconds of real sim after you finish, then extrapolate
+
   SLIPSTREAM: 1.08,
   SLIPSTREAM_RANGE: 25,      // segments
+  SLIPSTREAM_WIDTH: 0.45,    // lateral offset within which the tow works
+
+  // Collision box. CAR_LEN is world units along the track; CAR_WIDTH is in
+  // lateral units, where 1.0 is half the road.
+  CAR_LEN: 260,
+  // Fraction of the road's on-screen HALF-width. Matches CAR_WIDTH (0.33 of the
+  // half-road) so what you see is what the collision box uses.
+  CAR_SCREEN_WIDTH: 0.33,
+  CAR_MAX_SCREEN_FRAC: 0.75,  // cap, or a car one grid slot ahead fills the screen
+  CAR_WIDTH: 0.33,
+  COLLIDE_SPEED_LOSS: 0.82,  // × speed for both cars on contact
+  COLLIDE_SHOVE: 0.28,       // lateral shove apart
+  // 0.04 per contact wrecked a car in a single race once traffic was dense.
+  COLLIDE_DAMAGE: 0.02,
+  CONTACT_COOLDOWN: 0.6,     // seconds before the same pair can trade paint again
+  SEPARATION_ITERATIONS: 6,  // relaxation passes to untangle a pile-up
+
+  // Rival AI
+  // Rivals aim below the theoretical corner limit — an AI parked exactly on the
+  // limit is faster than any human and makes the field unbeatable. At 0.94 a
+  // competent driver finished 19th of 20; 0.88 puts them in the fight.
+  RIVAL_CORNER_MARGIN: 0.88, // fraction of holdable corner speed they aim for
+  RIVAL_MISTAKE_OVERSPEED: 1.18,
+  RIVAL_MISTAKE_CHANCE: 0.02,  // per corner per rival (section 4)
+  RIVAL_LOOKAHEAD: 30,       // segments
+  RIVAL_AVOID_RANGE: 40,     // segments
+  RIVAL_AVOID_WIDTH: 0.4,    // lateral gap counted as "in the way"
+  LINE_PREFERENCE_WEIGHT: 0.35,  // how much the racing line is worth vs clear air
+  RIVAL_STEER_GAIN: 2.4,
 
   // --- M0 only: constant cruise speed for the scroll test ---
   M0_CRUISE_SPEED: 12000,

@@ -164,6 +164,81 @@ function drawWarnings(ctx, W, H, unit, car) {
   ctx.restore();
 }
 
+// Lights out. Big, central, unmissable.
+export function drawCountdown(ctx, canvas, seconds) {
+  const W = canvas.width, H = canvas.height;
+  const unit = Math.min(W, H);
+  const n = Math.ceil(seconds);
+  const text = n <= 0 ? 'GO' : String(n);
+  const frac = seconds - Math.floor(seconds);   // 1 -> 0 within each second
+
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.globalAlpha = 0.35 + frac * 0.65;
+  ctx.font = `700 ${Math.round(unit * (n <= 0 ? 0.22 : 0.3))}px ${FONT}`;
+  ctx.fillStyle = n <= 0 ? '#4ade80' : n === 1 ? '#ffb020' : '#ff4438';
+  ctx.fillText(text, W / 2, H * 0.42);
+  ctx.globalAlpha = 1;
+  ctx.font = `700 ${Math.round(unit * 0.03)}px ${FONT}`;
+  ctx.fillStyle = 'rgba(230,240,255,0.7)';
+  ctx.fillText('HOLD THE LINE', W / 2, H * 0.5);
+  ctx.restore();
+}
+
+// Post-race classification.
+export function drawResults(ctx, canvas, results, { title = 'RACE RESULT', footer = 'press R to race again' } = {}) {
+  const W = canvas.width, H = canvas.height;
+  const unit = Math.min(W, H);
+  const rows = Math.min(results.length, H > W ? 12 : 10);
+  const s = Math.round(unit * (H > W ? 0.028 : 0.026));
+  const lineH = s * 1.55;
+  const boxH = lineH * (rows + 3.2);
+  const boxW = Math.min(W * 0.92, unit * 1.5);
+  const x0 = (W - boxW) / 2, y0 = (H - boxH) / 2;
+
+  ctx.save();
+  ctx.fillStyle = 'rgba(5,7,16,0.88)';
+  ctx.fillRect(x0, y0, boxW, boxH);
+  ctx.strokeStyle = 'rgba(125,249,255,0.4)';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(x0 + 1, y0 + 1, boxW - 2, boxH - 2);
+
+  ctx.font = `700 ${Math.round(s * 1.4)}px ${FONT}`;
+  ctx.fillStyle = '#7df9ff';
+  ctx.textAlign = 'center';
+  ctx.fillText(title, W / 2, y0 + lineH * 1.3);
+
+  ctx.font = `700 ${s}px ${FONT}`;
+  const pad = boxW * 0.05;
+  const colPos = x0 + pad, colName = x0 + pad + s * 2.8;
+  const colBest = x0 + boxW - pad - s * 9, colGap = x0 + boxW - pad;
+
+  const winner = results[0];
+  // Always show the player's row, even if they finished outside the visible rows.
+  const shown = results.slice(0, rows);
+  const me = results.find(r => r.isPlayer);
+  if (me && !shown.includes(me)) shown[shown.length - 1] = me;
+
+  let y = y0 + lineH * 2.6;
+  for (const r of shown) {
+    ctx.textAlign = 'left';
+    ctx.fillStyle = r.isPlayer ? '#ffb020' : 'rgba(230,240,255,0.85)';
+    ctx.fillText(String(r.position), colPos, y);
+    ctx.fillText(r.isPlayer ? 'YOU' : r.name, colName, y);
+    ctx.fillStyle = r.isPlayer ? '#ffb020' : 'rgba(230,240,255,0.55)';
+    ctx.fillText(formatTime(r.bestLap), colBest, y);
+    ctx.textAlign = 'right';
+    const gap = r.finishTime - winner.finishTime;
+    ctx.fillText(gap <= 0 ? 'WIN' : `+${gap.toFixed(1)}s`, colGap, y);
+    y += lineH;
+  }
+
+  ctx.textAlign = 'center';
+  ctx.fillStyle = 'rgba(125,249,255,0.6)';
+  ctx.fillText(footer, W / 2, y0 + boxH - lineH * 0.7);
+  ctx.restore();
+}
+
 export function formatTime(ms) {
   if (!isFinite(ms) || ms < 0) return '--:--.---';
   const m = Math.floor(ms / 60000);

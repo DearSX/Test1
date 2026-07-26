@@ -49,6 +49,79 @@ export function racingLine(curve) {
   return clamp(-curve * 0.35, -0.9, 0.9);
 }
 
+// Distance from `from` forward to `to` on a looping track.
+export function forwardGap(from, to, trackLength) {
+  let d = (to - from) % trackLength;
+  if (d < 0) d += trackLength;
+  return d > trackLength / 2 ? d - trackLength : d;
+}
+
+// Nearest car ahead of `car` that is close enough, and lined up closely enough,
+// to be in the way. Shared by the rival AI and the model driver — anyone
+// competent enough to be racing avoids traffic rather than driving into it.
+export function findObstacle(car, field, track) {
+  const range = TUNE.RIVAL_AVOID_RANGE * TUNE.SEGMENT_LEN;
+  let best = null;
+  for (const other of field) {
+    if (other === car) continue;
+    const gap = forwardGap(car.trackPos, other.trackPos, track.trackLength);
+    if (gap <= 0 || gap > range) continue;
+    if (Math.abs(car.x - other.x) > TUNE.RIVAL_AVOID_WIDTH) continue;
+    if (!best || gap < best.gap) {
+      best = { other, gap, dx: car.x - other.x, gapSegments: gap / TUNE.SEGMENT_LEN };
+    }
+  }
+  return best;
+}
+
+// Nearest car close behind, for blocking (and for knowing you're under attack).
+export function findChaser(car, field, track, rangeSegments = 14) {
+  const range = rangeSegments * TUNE.SEGMENT_LEN;
+  let best = null;
+  for (const other of field) {
+    if (other === car) continue;
+    const gap = forwardGap(other.trackPos, car.trackPos, track.trackLength);
+    if (gap <= 0 || gap > range) continue;
+    if (!best || gap < best.gap) best = { other, gap };
+  }
+  return best ? best.other : null;
+}
+
+// Choose a line across the road: the widest gap through the traffic ahead that
+// isn't too far off the line you actually want.
+//
+// Picking "the far side of the nearest car" is not enough. In a queue it dodges
+// car A straight into car B, and cars end up grinding down the road together —
+// which is how a competent driver was picking up 24 contacts and an 82%-wrecked
+// car in a three-lap race.
+//
+// Returns { target, blocked }: blocked means there is no gap to take, so lift.
+export function pickLine(car, field, track, preferred) {
+  const range = TUNE.RIVAL_AVOID_RANGE * TUNE.SEGMENT_LEN;
+  const nearby = [];
+  for (const other of field) {
+    if (other === car) continue;
+    const gap = forwardGap(car.trackPos, other.trackPos, track.trackLength);
+    if (gap > 0 && gap < range) nearby.push({ x: other.x, gap });
+  }
+  if (!nearby.length) return { target: preferred, blocked: false };
+
+  const need = TUNE.CAR_WIDTH * 1.25;   // clearance that counts as a clean gap
+  let best = null;
+  for (let cand = -0.92; cand <= 0.92; cand += 0.08) {
+    let clearance = Infinity;
+    for (const n of nearby) {
+      // Cars further ahead matter less — there's time to move again.
+      const urgency = 1 - Math.min(n.gap / range, 1) * 0.55;
+      clearance = Math.min(clearance, Math.abs(cand - n.x) / urgency);
+    }
+    const score = Math.min(clearance, need) - Math.abs(cand - preferred) * TUNE.LINE_PREFERENCE_WEIGHT;
+    if (!best || score > best.score) best = { cand, score, clearance };
+  }
+
+  return { target: clamp(best.cand, -0.95, 0.95), blocked: best.clearance < need * 0.62 };
+}
+
 // A competent driver: brakes for what's coming, feeds throttle back in, and
 // steers toward the racing line while fighting the push. Deliberately not
 // superhuman — it's here to prove a corner is learnable, not to set records.
@@ -61,7 +134,9 @@ export class ModelDriver {
   }
 
   // Returns an input object shaped like core/input.js produces.
-  drive(car) {
+  // `field` is optional; pass every car in the race and the driver will avoid
+  // traffic instead of driving through it.
+  drive(car, field = null) {
     const ahead = lookaheadCurve(this.track, car.trackPos, this.lookahead);
     const limit = holdableSpeedPct(ahead, car.grip, car.centrifugalScale)
       * this.margin * this.aggression;
@@ -73,8 +148,21 @@ export class ModelDriver {
 
     // Steer toward the line, then add whatever's needed to resist the push.
     const curveNow = this.track.curveAt(car.trackPos);
-    const target = racingLine(curveNow);
-    let steer = clamp((target - car.x) * 2.4, -1, 1);
+    let target = racingLine(curveNow);
+
+    if (field) {
+      const line = pickLine(car, field, this.track, target);
+      target = line.target;
+      // No gap to take: back off rather than shunt them. A competent driver
+      // doesn't use the car in front as a brake.
+      const obstacle = findObstacle(car, field, this.track);
+      if (line.blocked && obstacle && obstacle.gapSegments < 10) {
+        throttle = Math.min(throttle, 0.25);
+        brake = Math.max(brake, 0.35);
+      }
+    }
+
+    let steer = clamp((target - car.x) * TUNE.RIVAL_STEER_GAIN, -1, 1);
     if (Math.abs(curveNow) > 0.2) {
       steer = clamp(steer + Math.sign(curveNow) * Math.min(1, Math.abs(curveNow) / 4), -1, 1);
     }

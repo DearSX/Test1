@@ -1,17 +1,17 @@
-// M1 bootstrap. Done when: you can lap the track, and flooring a hairpin
-// reliably puts you in the grass.
+// M2 bootstrap. Done when: you can finish a 3-lap race from 20th to somewhere
+// believable, and the positions are honest.
 //
-// Rivals, positions and the race state machine arrive at M2 — for now this is a
-// hot lap with lap timing.
+// The career wrapper (seasons, money, shop) arrives at M3 — this runs a single
+// race against the full 20-car field.
 
 import { TUNE } from './tune.js';
 import { startLoop } from './core/loop.js';
 import { Input } from './core/input.js';
 import { RoadRenderer } from './render/road.js';
-import { drawPlayer } from './render/cars.js';
-import { drawHud } from './render/hud.js';
+import { drawPlayer, drawCars, PAINTS } from './render/cars.js';
+import { drawHud, drawCountdown, drawResults } from './render/hud.js';
 import { Effects } from './render/effects.js';
-import { PlayerCar } from './game/physics.js';
+import { Race, PHASE } from './game/race.js';
 import { buildIslandTrack } from './data/tracks/island.js';
 
 const canvas = document.getElementById('game');
@@ -19,20 +19,18 @@ const renderer = new RoadRenderer(canvas);
 const input = new Input();
 const effects = new Effects();
 const track = buildIslandTrack();
-const car = new PlayerCar(track);
+
+// Declared before newRace() runs — it writes into prev.
+let prev = { trackPos: 0, x: 0 };
+let race = newRace();
 
 input.attachTouch(canvas);
 
-const hot = {
-  lap: 1,
-  totalLaps: 3,
-  lapTime: 0,
-  bestLap: null,
-  lastLapDelta: null,
-};
-
-// Previous state, for render interpolation.
-let prev = { trackPos: car.trackPos, x: car.x };
+function newRace() {
+  const r = new Race(track, { seed: (Math.random() * 1e9) | 0, laps: TUNE.LAPS_DEFAULT });
+  prev = { trackPos: r.player.trackPos, x: r.player.x };
+  return r;
+}
 
 function resize() {
   renderer.resize(window.innerWidth, window.innerHeight);
@@ -42,44 +40,23 @@ window.addEventListener('orientationchange', resize);
 resize();
 
 window.addEventListener('keydown', e => {
-  if (e.code === 'KeyR') reset();
-  if (e.code === 'KeyM') car.manualGears = !car.manualGears;
+  if (e.code === 'KeyR') race = newRace();
+  if (e.code === 'KeyM') race.player.manualGears = !race.player.manualGears;
 });
 
-function reset() {
-  car.trackPos = 0; car.x = 0; car.speed = 0; car.gear = 0;
-  car.damage = 0; car.crashTimer = 0; car.nitroTimer = 0;
-  car.nitroCharges = TUNE.NITRO_CHARGES_START;
-  hot.lap = 1; hot.lapTime = 0; hot.lastLapDelta = null;
-  prev = { trackPos: 0, x: 0 };
-}
-
 function update(dt) {
+  const car = race.player;
   prev.trackPos = car.trackPos;
   prev.x = car.x;
 
   const cmd = input.sample(dt);
-  const before = car.trackPos;
-  car.update(dt, cmd);
+  race.update(dt, cmd);
   effects.update(dt, car, canvas);
-
-  hot.lapTime += dt * 1000;
-
-  // Crossing the start line wraps trackPos backwards.
-  if (car.trackPos < before - track.trackLength / 2) {
-    if (hot.bestLap === null || hot.lapTime < hot.bestLap) {
-      hot.lastLapDelta = hot.bestLap === null ? null : hot.lapTime - hot.bestLap;
-      hot.bestLap = hot.lapTime;
-    } else {
-      hot.lastLapDelta = hot.lapTime - hot.bestLap;
-    }
-    hot.lap++;
-    hot.lapTime = 0;
-  }
 }
 
 function render(alpha) {
   const ctx = renderer.ctx;
+  const car = race.player;
 
   // Interpolate the camera along the shorter way round the lap seam.
   let d = car.trackPos - prev.trackPos;
@@ -89,11 +66,42 @@ function render(alpha) {
 
   const shaken = effects.beginShake(ctx, canvas);
   renderer.render(track, pos, x);
+
+  // Rivals, far to near, against the projection the road pass just wrote.
+  drawCars(ctx, canvas, renderer, track, race.entries
+    .filter(e => !e.isPlayer)
+    .map(e => ({
+      trackPos: e.car.trackPos,
+      x: e.car.x,
+      paint: rivalPaint(e),
+      braking: false,
+    })), pos);
+
   drawPlayer(ctx, canvas, car, input.state);
   effects.draw(ctx);
   effects.endShake(ctx, shaken);
 
-  drawHud(ctx, canvas, car, hot);
+  drawHud(ctx, canvas, car, race.hudState());
+
+  if (race.phase === PHASE.COUNTDOWN) drawCountdown(ctx, canvas, race.countdown);
+  if (race.playerEntry.finished) {
+    drawResults(ctx, canvas, race.results(), {
+      title: race.phase === PHASE.FINISHED ? 'RACE RESULT' : 'FINISHED — FIELD STILL RUNNING',
+    });
+  }
+}
+
+// Rival paint comes from the roster. Cached on the entry so we aren't building
+// objects every frame.
+function rivalPaint(entry) {
+  if (!entry._paint) {
+    entry._paint = {
+      body: entry.identity.paint,
+      trim: '#e8e8ee',
+      glass: '#16222f',
+    };
+  }
+  return entry._paint;
 }
 
 function wrap(z) {

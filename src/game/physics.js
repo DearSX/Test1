@@ -20,6 +20,8 @@ export class PlayerCar {
     this.stats = stats;
 
     this.trackPos = 0;      // z along the track, world units
+    this.distance = 0;      // total distance travelled — the honest measure of
+                            // race progress, and what M4 burns fuel against
     this.x = 0;             // continuous lateral position, -1..1
     this.speed = 0;         // world units / second
     this.gear = 0;          // index into GEAR_TOP
@@ -34,6 +36,7 @@ export class PlayerCar {
     this.shiftFlash = 0;    // >0 just after an upshift; audio resets RPM on this
 
     this.manualGears = false;
+    this.slipstream = 1;         // set by race.js each step (section 4)
     this.centrifugalScale = 1;   // difficulty knob (Arcade softens it)
 
     // Read by audio and the HUD; set every step.
@@ -50,7 +53,9 @@ export class PlayerCar {
   }
 
   get effectiveMaxSpeed() {
-    return this.maxSpeed * (this.nitroTimer > 0 ? TUNE.NITRO_BOOST : 1);
+    return this.maxSpeed
+      * (this.nitroTimer > 0 ? TUNE.NITRO_BOOST : 1)
+      * this.slipstream;
   }
 
   get grip() {
@@ -84,7 +89,7 @@ export class PlayerCar {
     if (this.crashTimer > 0) {
       this.crashTimer -= dt;
       this.speed = Math.max(0, this.speed - TUNE.BASE_BRAKING * 1.4 * dt);
-      this.trackPos = this.wrap(this.trackPos + this.speed * dt);
+      this.advance(dt);
       this.lateralSlip = 0;
       this.tyreScrub = 0;
       return;
@@ -164,7 +169,7 @@ export class PlayerCar {
     // possible, or the soul dial has nothing to punish.
     if (Math.abs(this.x) > TUNE.CRASH_X) this.crash();
 
-    this.trackPos = this.wrap(this.trackPos + this.speed * dt);
+    this.advance(dt);
     this.rpm = this.computeRpm(maxSpeed);
   }
 
@@ -215,6 +220,12 @@ export class PlayerCar {
     if (r < 0.28) return 0.45;            // bogged
     if (r > 1.0) return 0.55;             // on the limiter, needs an upshift
     return 0.82 + 0.18 * Math.sin(Math.min(r, 1) * Math.PI);
+  }
+
+  advance(dt) {
+    const moved = this.speed * dt;
+    this.distance += moved;
+    this.trackPos = this.wrap(this.trackPos + moved);
   }
 
   wrap(z) {

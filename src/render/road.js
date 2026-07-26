@@ -59,6 +59,10 @@ export class RoadRenderer {
     const N = segs.length;
 
     const baseIndex = track.findIndex(position);
+    // Cars and scenery are drawn in a second pass, far to near, against the
+    // projection this pass just wrote onto the segments.
+    this.baseIndex = baseIndex;
+    this.basePosition = position;
     const baseSegment = segs[baseIndex];
     const basePercent = (position % segLen) / segLen;
     const camY = TUNE.CAMERA_HEIGHT + track.elevationAt(position);

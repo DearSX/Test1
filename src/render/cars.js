@@ -68,9 +68,14 @@ export function drawCarBody(ctx, x, y, width, facing = 0, paint = PAINTS.player,
 
 // The player, planted at the bottom of the screen. The camera already follows
 // lateral position, so the sprite only leans — it does not slide across.
+//
+// Width comes from the same projection the rivals use, evaluated at the camera's
+// own distance to the car (CAMERA_HEIGHT * cameraDepth in this camera model).
+// A fixed fraction of the canvas would make a rival drawn alongside you the
+// wrong size relative to your own car.
 export function drawPlayer(ctx, canvas, car, input) {
   const W = canvas.width, H = canvas.height;
-  const width = W * 0.17;
+  const width = (TUNE.ROAD_WIDTH / TUNE.CAMERA_HEIGHT) * (W / 2) * TUNE.CAR_SCREEN_WIDTH;
   const y = H - H * 0.055;
   // Lean into the steering, plus a little from how hard the corner is pushing.
   const facing = clamp(input.steer * 0.8 + car.lateralSlip * Math.sign(-car.x || 1) * 0.2, -1, 1);
@@ -80,19 +85,71 @@ export function drawPlayer(ctx, canvas, car, input) {
   });
 }
 
-// A rival, projected against the same segment data the road used. Returns false
-// if it isn't visible. (M2 uses this; the geometry is the same placeholder.)
-export function drawRival(ctx, canvas, seg, rival, cameraX, paint) {
-  const p = seg.p1.screen;
-  if (!p.scale || p.scale <= 0) return false;
+// Draws the other cars, far to near, against the projection road.js just wrote
+// onto the segments. Must run after RoadRenderer.render() — it reads the screen
+// coordinates that pass produced rather than recomputing them, so the cars sit
+// exactly on the road however it bends.
+//
+// The near-to-far road pass and this far-to-near sprite pass are the standard
+// pairing: the road needs painter's order outward, sprites need it inward so a
+// close car overlaps a distant one.
+export function drawCars(ctx, canvas, renderer, track, cars, cameraZ) {
+  const segs = track.segments;
+  const N = segs.length;
+  const base = renderer.baseIndex;
+  if (base === undefined) return 0;
+
+  // Bucket cars by the segment they're in, so each segment is one lookup.
+  const buckets = new Map();
+  for (const c of cars) {
+    if (c.hidden) continue;
+    const n = offsetFromCamera(track, base, c.trackPos);
+    if (n < 1 || n >= TUNE.DRAW_DISTANCE) continue;
+    if (!buckets.has(n)) buckets.set(n, []);
+    buckets.get(n).push(c);
+  }
+  if (!buckets.size) return 0;
+
   const W = canvas.width;
-  const scale = p.scale;
-  const screenX = p.x + scale * rival.x * TUNE.ROAD_WIDTH * W / 2;
-  const width = scale * TUNE.ROAD_WIDTH * W / 2 * 0.62;
-  if (width < 2) return false;
-  if (p.y < seg.clip - width) return false;
-  drawCarBody(ctx, screenX, p.y, width, 0, paint, {});
-  return true;
+  let drawn = 0;
+
+  for (let n = TUNE.DRAW_DISTANCE - 1; n >= 1; n--) {
+    const list = buckets.get(n);
+    if (!list) continue;
+    const seg = segs[(base + n) % N];
+    const p1 = seg.p1.screen, p2 = seg.p2.screen;
+    if (!p1.scale || p1.scale <= 0) continue;
+
+    for (const c of list) {
+      // Position within the segment, so cars glide rather than hop.
+      const frac = ((c.trackPos % track.segmentLength) + track.segmentLength)
+        % track.segmentLength / track.segmentLength;
+      const scale = p1.scale + (p2.scale - p1.scale) * frac;
+      const roadX = p1.x + (p2.x - p1.x) * frac;
+      const y = p1.y + (p2.y - p1.y) * frac;
+      const width = Math.min(
+        scale * TUNE.ROAD_WIDTH * W / 2 * TUNE.CAR_SCREEN_WIDTH,
+        W * TUNE.CAR_MAX_SCREEN_FRAC);
+      if (width < 1.5) continue;
+
+      const screenX = roadX + scale * c.x * TUNE.ROAD_WIDTH * W / 2;
+      // Hidden behind a crest.
+      if (y > seg.clip) continue;
+
+      drawCarBody(ctx, screenX, y, width, 0, c.paint ?? PAINTS.rival1, { braking: c.braking });
+      drawn++;
+    }
+  }
+  return drawn;
+}
+
+// How many segments ahead of the camera a track position is, allowing for the
+// lap wrap.
+function offsetFromCamera(track, baseIndex, trackPos) {
+  const N = track.segments.length;
+  let n = track.findIndex(trackPos) - baseIndex;
+  if (n < 0) n += N;
+  return n;
 }
 
 function rrect(ctx, x, y, w, h, r) {

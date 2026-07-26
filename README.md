@@ -18,7 +18,8 @@ then open `http://localhost:3000` (serve) or `http://localhost:8000` (python).
 
 - **M0 — Skeleton: DONE.** Fixed 60Hz timestep + accumulator, canvas + resize, one authored track ("Island Loop", 2,425 segments) rendering with curves and elevation at a constant cruise speed. Render interpolation is wired in (`render(alpha)`).
 - **M1 — Physics: DONE.** Throttle, brake, six-speed box with tacho (auto or manual), continuous analog steering, centrifugal force, per-surface grip, off-road, crashes, nitro. Keyboard, touch and gamepad. `CENTRIFUGAL` tuned to **0.78**.
-- M2 — Racing: next. 19 rivals on the same track model, swept collisions, positions, laps.
+- **M2 — Racing: DONE.** 19 rivals running the same physics on the same track, swept collisions with no pass-through, slipstream, honest positions, 3-lap races with lap timing and a results screen.
+- M3 — Career: next. Season, prize money, upgrade shop, stats wired into physics.
 
 ### Controls
 
@@ -36,10 +37,19 @@ Every magic number is in `src/tune.js`. `M0_CRUISE_SPEED` controls the scroll sp
 Each milestone has a headless check that runs the real game modules under Node against a recording canvas, so the "done when" test is repeatable instead of eyeballed:
 
 ```
-node tools/verify-m0.mjs
+node tools/verify-m0.mjs     # projection, track shape, fixed timestep
+node tools/verify-m1.mjs     # physics, and both halves of the soul-dial rule
+node tools/verify-m2.mjs     # rivals, swept collisions, honest positions
 ```
 
 Exit code is non-zero if any check fails. `tools/harness.mjs` holds the fake canvas and the assertion helpers.
+
+Two of these take arguments worth knowing about:
+
+```
+node tools/verify-m1.mjs --sweep   # scan CENTRIFUGAL for the window where both halves hold
+node tools/verify-m2.mjs --race    # print a full race classification
+```
 
 ## Lateral position
 
