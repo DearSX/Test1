@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>VELOCITY 3000 — M0</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #05060e; overflow: hidden; }
+  #game { display: block; width: 100vw; height: 100vh; image-rendering: pixelated; }
+  #m0-badge {
+    position: fixed; top: 10px; left: 12px;
+    font: 700 11px/1.4 ui-monospace, Menlo, Consolas, monospace;
+    color: #7df9ff; letter-spacing: 2px; text-transform: uppercase;
+    opacity: 0.8; pointer-events: none;
+  }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="m0-badge">Velocity 3000 · M0 skeleton · auto-scroll</div>
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
